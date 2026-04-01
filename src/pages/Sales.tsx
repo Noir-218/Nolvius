@@ -1,0 +1,597 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { supabase } from '../lib/supabase';
+import { Upload, CheckCircle2, AlertCircle, Calendar, Trash2, Edit2, Save, X, RefreshCw, TrendingDown } from 'lucide-react';
+import * as xlsx from 'xlsx';
+import { useAuth } from '../contexts/AuthContext';
+import { format } from 'date-fns';
+
+interface ParsedSale {
+  product_name: string;
+  product_code?: string;
+  quantity: number;
+  sale_date: string;
+  matched_product_id?: string;
+  is_direct_ingredient?: boolean;
+}
+
+interface IngredientUsage {
+  ingredient_id: string;
+  name: string;
+  unit: string;
+  total_usage: number;
+}
+
+interface SaleRecord {
+  id: string;
+  product_id: string;
+  quantity: number;
+  sale_date: string;
+  products: {
+    name: string;
+  } | null;
+}
+
+export default function Sales() {
+  const { user } = useAuth();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [activeTab, setActiveTab] = useState<'import' | 'history'>('import');
+
+  // Import states
+  const [sales, setSales] = useState<ParsedSale[]>([]);
+  const [usages, setUsages] = useState<IngredientUsage[]>([]);
+  const [unmatched, setUnmatched] = useState<ParsedSale[]>([]);
+  const [step, setStep] = useState<1 | 2>(1);
+  const [processing, setProcessing] = useState(false);
+  const [importDate, setImportDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+
+  // History states
+  const [history, setHistory] = useState<SaleRecord[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [filterDate, setFilterDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingQty, setEditingQty] = useState<number>(0);
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // IMPORT LOGIC
+  // ═══════════════════════════════════════════════════════════════════════
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      try {
+        const bstr = evt.target?.result;
+        const wb = xlsx.read(bstr, { type: 'binary' });
+
+        const cleanString = (str: string) =>
+          str.replace(/[\u200b\u200c\u200d\uFEFF\u00A0]/g, '').trim();
+
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rawRows: any[][] = xlsx.utils.sheet_to_json(ws, { header: 1 });
+
+        const headerKeywords = ['mã hàng', 'mã sản phẩm', 'mã sp', 'tên hàng', 'tên sản phẩm'];
+        const headerRowIndex = rawRows.findIndex(row =>
+          row.some(cell => cell && headerKeywords.includes(String(cell).toLowerCase().trim()))
+        );
+
+        if (headerRowIndex === -1) {
+          alert('Không tìm thấy dòng tiêu đề (Mã hàng / Tên hàng) trong file. Vui lòng kiểm tra lại.');
+          return;
+        }
+
+        const headerRow = rawRows[headerRowIndex].map(cell => String(cell ?? '').toLowerCase().trim());
+        const dataRows = rawRows.slice(headerRowIndex + 1);
+
+        const colCode = headerRow.findIndex(h => ['mã hàng', 'mã sản phẩm', 'mã sp', 'mã số', 'mã', 'id', 'code', 'product code'].includes(h));
+        const colName = headerRow.findIndex(h => ['tên hàng', 'tên sản phẩm', 'tên món', 'product name', 'name', 'sản phẩm'].includes(h));
+        let colQty = headerRow.findIndex(h => ['số lượng', 'sl', 'quantity', 'qty', 'số lượng bán'].includes(h));
+        if (colQty === -1) {
+          const firstDataRow = dataRows.find(r => r[colCode] || r[colName]);
+          if (firstDataRow) {
+            colQty = firstDataRow.findIndex((cell, idx) =>
+              idx > Math.max(colCode, colName) && typeof cell === 'number' && cell > 0
+            );
+          }
+        }
+
+        const { data: dbProducts } = await supabase.from('products').select('id, name');
+        const { data: dbIngredients } = await supabase.from('ingredients').select('id, name');
+        
+        const nameMap = new Map((dbProducts || []).map(p => [cleanString(p.name.toLowerCase()), p.id]));
+        const codeMap = new Map((dbProducts || []).map(p => [cleanString(p.id.toLowerCase()), p.id]));
+        
+        const ingNameMap = new Map((dbIngredients || []).map(i => [cleanString(i.name.toLowerCase()), i.id]));
+        const ingCodeMap = new Map((dbIngredients || []).map(i => [cleanString(i.id.toLowerCase()), i.id]));
+
+        let parsed: ParsedSale[] = dataRows.map((row: any[]) => {
+          const rawCode = colCode >= 0 ? cleanString(String(row[colCode] ?? '')) : '';
+          const rawName = colName >= 0 ? cleanString(String(row[colName] ?? '')) : '';
+          const rawQty = colQty >= 0 ? row[colQty] : undefined;
+          const qty = parseInt(String(rawQty ?? '0').replace(/[^0-9]/g, '')) || 0;
+
+          return {
+            product_name: rawName || rawCode || '',
+            product_code: rawCode,
+            quantity: qty,
+            sale_date: importDate
+          };
+        }).filter(r => (r.product_name || r.product_code) && r.quantity > 0);
+
+        const matched: ParsedSale[] = [];
+        const unmatchedItems: ParsedSale[] = [];
+
+        parsed.forEach(p => {
+          const lName = cleanString(p.product_name.toLowerCase());
+          const lCode = cleanString(p.product_code?.toLowerCase() || '');
+
+          let pid = p.product_code ? codeMap.get(lCode) : undefined;
+          if (!pid && p.product_name) pid = nameMap.get(lName);
+
+          if (pid) {
+            matched.push({ ...p, matched_product_id: pid });
+          } else {
+            let iid = p.product_code ? ingCodeMap.get(lCode) : undefined;
+            if (!iid && p.product_name) iid = ingNameMap.get(lName);
+            
+            if (iid) {
+              matched.push({ ...p, matched_product_id: iid, is_direct_ingredient: true });
+            } else {
+              unmatchedItems.push(p);
+            }
+          }
+        });
+
+        const qtyByProduct: Record<string, number> = {};
+        matched.forEach(m => {
+          if (m.matched_product_id) {
+            qtyByProduct[m.matched_product_id] = (qtyByProduct[m.matched_product_id] || 0) + m.quantity;
+          }
+        });
+
+        const productIds = Object.keys(qtyByProduct);
+        if (productIds.length > 0) {
+          // 1. Fetch ALL ingredients for metadata
+          const { data: allIngs } = await supabase.from('ingredients').select('id, name, unit');
+          const ingMetadata: Record<string, {name: string, unit: string}> = {};
+          (allIngs || []).forEach(i => ingMetadata[i.id] = { name: i.name, unit: i.unit });
+
+          // 2. Fetch ALL recipes to resolve recursively
+          const { data: allRecipes } = await supabase.from('recipes').select('*');
+          
+          const calcUsages: Record<string, number> = {};
+          const ingIds = new Set((allIngs || []).map(i => i.id));
+
+          // Recursive resolver
+          const resolve = (pid: string, qty: number, visited: Set<string> = new Set()) => {
+            if (visited.has(pid)) return; // Prevent infinite loops
+            visited.add(pid);
+
+            const productRows = (allRecipes || []).filter(r => (r as any).product_id === pid);
+            if (productRows.length > 0) {
+              productRows.forEach(r => {
+                const row = r as any;
+                if (row.ingredient_id) {
+                  calcUsages[row.ingredient_id] = (calcUsages[row.ingredient_id] || 0) + (row.quantity * qty);
+                } else if (row.sub_product_id) {
+                  resolve(row.sub_product_id, row.quantity * qty, new Set(visited));
+                }
+              });
+            } else if (ingIds.has(pid)) {
+              // Direct ingredient fallback (1:1)
+              calcUsages[pid] = (calcUsages[pid] || 0) + qty;
+            }
+          };
+
+          productIds.forEach(pid => {
+            const saleQty = qtyByProduct[pid] || 0;
+            resolve(pid, saleQty);
+          });
+
+          const usageList: IngredientUsage[] = Object.entries(calcUsages).map(([id, qty]) => ({
+            ingredient_id: id,
+            name: ingMetadata[id]?.name || 'Unknown',
+            unit: ingMetadata[id]?.unit || '',
+            total_usage: qty
+          }));
+
+          setUsages(usageList);
+        } else {
+          setUsages([]);
+        }
+
+        setSales(matched);
+        setUnmatched(unmatchedItems);
+        setStep(2);
+
+      } catch (err) {
+        alert('Có lỗi xảy ra khi đọc file Excel. Vui lòng kiểm tra lại định dạng file.');
+        console.error(err);
+      }
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    };
+    reader.readAsBinaryString(file);
+  };
+
+  const confirmImport = async () => {
+    setProcessing(true);
+    try {
+      const directIngs = sales.filter(s => s.is_direct_ingredient && s.matched_product_id);
+      if (directIngs.length > 0) {
+        const uniqueDirectIds = [...new Set(directIngs.map(s => s.matched_product_id!))];
+        const productUpserts = uniqueDirectIds.map(id => {
+          const s = directIngs.find(item => item.matched_product_id === id);
+          return {
+            id,
+            name: s?.product_name || 'Hàng bán thẳng',
+            is_active: true
+          };
+        });
+        await supabase.from('products').upsert(productUpserts);
+      }
+
+      const salesInserts = sales.map(s => ({
+        product_id: s.matched_product_id,
+        quantity: s.quantity,
+        sale_date: s.sale_date,
+        processed: true
+      }));
+      
+      if (salesInserts.length > 0) {
+        const { error } = await supabase.from('sales').insert(salesInserts);
+        if (error) throw error;
+      }
+
+      const uniqueDates = [...new Set(sales.map(s => s.sale_date))];
+      for (const date of uniqueDates) {
+        await syncStockTransactions(date);
+      }
+
+      alert('Đã import thành công!');
+      setStep(1);
+      setSales([]);
+      setUsages([]);
+      setUnmatched([]);
+      setFilterDate(importDate);
+      setActiveTab('history');
+    } catch (err) {
+      alert('Lỗi khi lưu dữ liệu!');
+      console.error(err);
+    }
+    setProcessing(false);
+  };
+
+  const syncStockTransactions = async (date: string) => {
+    await supabase.from('stock_transactions').delete().eq('transaction_date', date).eq('type', 'SALES_USAGE');
+    const { data: daySales } = await supabase.from('sales').select('product_id, quantity').eq('sale_date', date);
+    if (!daySales || daySales.length === 0) return;
+
+    const qtyByProduct: Record<string, number> = {};
+    daySales.forEach(s => { if (s.product_id) qtyByProduct[s.product_id] = (qtyByProduct[s.product_id] || 0) + s.quantity; });
+
+    const productIds = Object.keys(qtyByProduct);
+    const { data: allRecipes } = await supabase.from('recipes').select('*');
+    const { data: allIngs } = await supabase.from('ingredients').select('id');
+    const ingIds = new Set((allIngs || []).map(i => i.id));
+
+    const totalUsage: Record<string, number> = {};
+
+    const resolve = (pid: string, qty: number, visited: Set<string> = new Set()) => {
+      if (visited.has(pid)) return;
+      visited.add(pid);
+
+      const productRows = (allRecipes || []).filter(r => (r as any).product_id === pid);
+      if (productRows.length > 0) {
+        productRows.forEach(r => {
+          const row = r as any;
+          if (row.ingredient_id) {
+            totalUsage[row.ingredient_id] = (totalUsage[row.ingredient_id] || 0) + (row.quantity * qty);
+          } else if (row.sub_product_id) {
+            resolve(row.sub_product_id, row.quantity * qty, new Set(visited));
+          }
+        });
+      } else if (ingIds.has(pid)) {
+        totalUsage[pid] = (totalUsage[pid] || 0) + qty;
+      }
+    };
+
+    productIds.forEach(pid => {
+      const saleQty = qtyByProduct[pid];
+      resolve(pid, saleQty);
+    });
+
+    const txInserts = Object.entries(totalUsage).map(([ingId, qty]) => ({
+      ingredient_id: ingId,
+      type: 'SALES_USAGE',
+      quantity: -qty,
+      transaction_date: date,
+      notes: `Đồng bộ tiêu hao ngày ${date}`,
+      created_by: user?.id
+    }));
+
+    if (txInserts.length > 0) await supabase.from('stock_transactions').insert(txInserts);
+  };
+
+  const fetchHistory = async (date?: string) => {
+    setLoadingHistory(true);
+    const targetDate = date ?? filterDate;
+    const { data } = await supabase
+      .from('sales')
+      .select('*, products(name)')
+      .eq('sale_date', targetDate)
+      .order('created_at', { ascending: false });
+    if (data) setHistory(data as any);
+    setLoadingHistory(false);
+  };
+
+  useEffect(() => {
+    if (activeTab === 'history') fetchHistory();
+  }, [activeTab, filterDate]);
+
+  const handleDeleteSale = async (id: string) => {
+    const saleToDelete = history.find(s => s.id === id);
+    if (!saleToDelete) return;
+    const saleDate = saleToDelete.sale_date;
+    if (!confirm('Xóa dòng này?')) return;
+    const { error } = await supabase.from('sales').delete().eq('id', id);
+    if (!error) {
+      await syncStockTransactions(saleDate);
+      fetchHistory();
+    } else alert('Lỗi!');
+  };
+
+  const handleUpdateSale = async (id: string) => {
+    const saleToUpdate = history.find(s => s.id === id);
+    if (!saleToUpdate) return;
+    const saleDate = saleToUpdate.sale_date;
+    const { error } = await supabase.from('sales').update({ quantity: editingQty }).eq('id', id);
+    if (!error) {
+      setEditingId(null);
+      await syncStockTransactions(saleDate);
+      fetchHistory();
+    } else alert('Lỗi!');
+  };
+
+  return (
+    <div className="container-fluid py-3 py-md-4">
+      <div className="row align-items-center mb-4 g-3">
+        <div className="col-12 col-md-auto me-auto">
+          <h1 className="h3 fw-black text-dark mb-1">DOANH SỐ BÁN HÀNG</h1>
+          <p className="text-secondary small mb-0">Quản lý dữ liệu bán hàng và khấu trừ nguyên liệu.</p>
+        </div>
+      </div>
+
+      <div className="card border-0 shadow-sm rounded-4 overflow-hidden mb-4">
+        <div className="card-header bg-light p-2 border-0">
+          <ul className="nav nav-pills nav-fill">
+            <li className="nav-item">
+              <button
+                className={`nav-link rounded-pill fw-bold small transition-all ${activeTab === 'import' ? 'active shadow-sm' : 'text-secondary'}`}
+                onClick={() => setActiveTab('import')}
+              >
+                <Upload size={16} className="me-2" /> Import POS (Excel)
+              </button>
+            </li>
+            <li className="nav-item">
+              <button
+                className={`nav-link rounded-pill fw-bold small transition-all ${activeTab === 'history' ? 'active shadow-sm' : 'text-secondary'}`}
+                onClick={() => setActiveTab('history')}
+              >
+                <Calendar size={16} className="me-2" /> Lịch Sử Bán Hàng
+              </button>
+            </li>
+          </ul>
+        </div>
+
+        <div className="card-body p-3 p-md-4">
+          {activeTab === 'import' ? (
+            <div className="py-2">
+              {step === 1 ? (
+                <div className="row justify-content-center">
+                  <div className="col-12 col-md-6 text-center">
+                    <div className="card border-0 bg-light rounded-4 p-4 mb-4 shadow-sm border-start border-4 border-primary">
+                      <label className="small fw-black text-muted text-uppercase tracking-widest mb-3">Chọn ngày nhập số bán:</label>
+                      <div className="input-group input-group-lg border-0 shadow-sm rounded-pill overflow-hidden bg-white">
+                        <span className="input-group-text border-0 bg-transparent ps-4"><Calendar className="text-primary" size={24} /></span>
+                        <input
+                          type="date"
+                          value={importDate}
+                          onChange={e => setImportDate(e.target.value)}
+                          className="form-control border-0 fw-black text-primary ps-0"
+                          style={{ fontSize: '1.25rem' }}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="p-5 border-2 border-dashed rounded-4 bg-white text-center hover-shadow transition-all" 
+                         style={{ cursor: 'pointer', borderColor: '#dee2e6' }}
+                         onClick={() => fileInputRef.current?.click()}
+                    >
+                      <div className="bg-primary bg-opacity-10 text-primary rounded-circle d-inline-flex align-items-center justify-content-center mb-4" style={{ width: '80px', height: '80px' }}>
+                        <Upload size={40} />
+                      </div>
+                      <h4 className="fw-bold text-dark mb-2">Tải file POS lên</h4>
+                      <p className="text-secondary small mb-4">Click để chọn file Excel (.xlsx, .xls)</p>
+                      <input type="file" accept=".xlsx, .xls" className="hidden" ref={fileInputRef} onChange={handleFileUpload} style={{ display: 'none' }} />
+                      <button className="btn btn-primary btn-lg rounded-pill px-5 fw-bold shadow">Chọn File Excel</button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="d-flex justify-content-between align-items-center mb-4">
+                    <h5 className="fw-bold text-dark mb-0">Kết quả xử lý file</h5>
+                    <button onClick={() => setStep(1)} className="btn btn-sm btn-outline-danger rounded-pill px-3 fw-bold">Hủy và tải lại</button>
+                  </div>
+
+                  {unmatched.length > 0 && (
+                    <div className="alert alert-warning border-0 shadow-sm rounded-4 mb-4">
+                       <div className="d-flex align-items-center gap-2 fw-bold text-warning-emphasis mb-2">
+                        <AlertCircle size={20} /> Sản phẩm không khớp ({unmatched.length})
+                      </div>
+                      <div className="p-3 bg-white bg-opacity-50 rounded-3 small text-dark border overflow-auto" style={{ maxHeight: '100px' }}>
+                        {unmatched.map((u, idx) => (
+                           <span key={idx} className="badge bg-light text-dark border me-1 mb-1">{u.product_name} x{u.quantity}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="row g-4 mb-4">
+                    <div className="col-12 col-xl-6">
+                      <div className="card h-100 border-0 shadow-sm rounded-4 overflow-hidden">
+                        <div className="card-header bg-success bg-opacity-10 border-0 pt-3 px-4">
+                           <h6 className="fw-bold text-success d-flex align-items-center gap-2 mb-0">
+                            <CheckCircle2 size={18} /> Món Hợp Lệ ({sales.length})
+                          </h6>
+                        </div>
+                        <div className="table-responsive" style={{ maxHeight: '400px' }}>
+                          <table className="table table-hover align-middle mb-0" style={{ fontSize: '13px' }}>
+                            <thead className="table-light sticky-top">
+                              <tr>
+                                <th className="px-4 py-3 border-0">Ngày</th>
+                                <th className="px-4 py-3 border-0">Tên Món</th>
+                                <th className="px-4 py-3 border-0 text-end">Số lượng</th>
+                              </tr>
+                            </thead>
+                            <tbody className="border-top-0">
+                              {sales.map((s, idx) => (
+                                <tr key={idx}>
+                                  <td className="px-4 py-3 text-muted">{s.sale_date}</td>
+                                  <td className="px-4 py-3 fw-bold">{s.product_name}</td>
+                                  <td className="px-4 py-3 text-end font-monospace fw-black text-primary">{s.quantity}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="col-12 col-xl-6">
+                      <div className="card h-100 border-0 shadow-sm rounded-4 overflow-hidden">
+                        <div className="card-header bg-primary bg-opacity-10 border-0 pt-3 px-4">
+                           <h6 className="fw-bold text-primary d-flex align-items-center gap-2 mb-0">
+                            <TrendingDown size={18} /> Tổng Tiêu Hao Nguyên Liệu
+                          </h6>
+                        </div>
+                        <div className="table-responsive" style={{ maxHeight: '400px' }}>
+                          <table className="table table-hover align-middle mb-0" style={{ fontSize: '13px' }}>
+                            <thead className="table-light sticky-top">
+                              <tr>
+                                <th className="px-4 py-3 border-0">Nguyên Liệu</th>
+                                <th className="px-3 py-3 border-0 text-end">Lượng dùng</th>
+                              </tr>
+                            </thead>
+                            <tbody className="border-top-0">
+                              {usages.length === 0 ? (
+                                <tr><td colSpan={2} className="px-4 py-5 text-center text-muted italic">Không có dữ liệu</td></tr>
+                              ) : (
+                                usages.map((u, idx) => (
+                                  <tr key={idx}>
+                                    <td className="px-4 py-3 fw-bold">{u.name}</td>
+                                    <td className="px-3 py-3 text-end fw-black text-danger">
+                                      -{u.total_usage.toFixed(2)} <small className="fw-normal">{u.unit}</small>
+                                    </td>
+                                  </tr>
+                                ))
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="card border-0 bg-primary bg-opacity-10 rounded-4 p-4 text-center border-start border-4 border-primary">
+                    <button
+                      onClick={confirmImport} disabled={processing}
+                      className="btn btn-primary btn-lg rounded-pill px-5 fw-black shadow-lg hover-scale"
+                    >
+                      {processing ? <RefreshCw className="animate-spin" /> : 'XÁC NHẬN IMPORT VÀO KHO'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="py-2">
+              <div className="card border-0 bg-light rounded-4 mb-4 p-3 shadow-sm border-start border-4 border-info">
+                <div className="row align-items-center g-3">
+                  <div className="col-12 col-md-auto">
+                    <div className="d-flex align-items-center gap-2 small fw-bold text-muted text-uppercase tracking-widest ps-2">
+                      <Calendar size={18} className="text-info" /> Xem ngày:
+                    </div>
+                  </div>
+                  <div className="col-12 col-md-3">
+                    <input
+                      type="date"
+                      value={filterDate}
+                      onChange={e => setFilterDate(e.target.value)}
+                      className="form-control border-0 rounded-pill shadow-sm fw-black text-info"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="table-responsive rounded-3 overflow-hidden border">
+                <table className="table table-hover align-middle mb-0" style={{ fontSize: '13px' }}>
+                  <thead className="table-light">
+                    <tr>
+                      <th className="px-4 py-3 border-0 small fw-black tracking-widest text-uppercase text-secondary">Sản Phẩm</th>
+                      <th className="px-4 py-3 border-0 small fw-black tracking-widest text-uppercase text-secondary text-center">Số lượng</th>
+                      <th className="px-4 py-3 border-0 small fw-black tracking-widest text-uppercase text-secondary text-end">Hành động</th>
+                    </tr>
+                  </thead>
+                  <tbody className="border-top-0 bg-white">
+                    {loadingHistory ? (
+                      <tr><td colSpan={3} className="px-4 py-5 text-center text-muted">Đang tải...</td></tr>
+                    ) : history.length === 0 ? (
+                      <tr><td colSpan={3} className="px-4 py-5 text-center text-muted">Không có dữ liệu.</td></tr>
+                    ) : (
+                      history.map(item => (
+                        <tr key={item.id}>
+                          <td className="px-4 py-3 fw-bold text-dark">{item.products?.name || '---'}</td>
+                          <td className="px-4 py-3 text-center">
+                            {editingId === item.id ? (
+                              <input
+                                type="number"
+                                value={editingQty}
+                                onChange={e => setEditingQty(parseInt(e.target.value))}
+                                className="form-control form-control-sm text-center fw-bold mx-auto border-primary"
+                                style={{ maxWidth: '100px' }}
+                              />
+                            ) : (
+                              <span className="h6 fw-black text-primary mb-0">{item.quantity}</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-end">
+                            <div className="d-flex justify-content-end gap-2">
+                              {editingId === item.id ? (
+                                <>
+                                  <button onClick={() => handleUpdateSale(item.id)} className="btn btn-sm btn-success rounded-pill px-3 shadow-sm"><Save size={16} /></button>
+                                  <button onClick={() => setEditingId(null)} className="btn btn-sm btn-light border rounded-pill px-3"><X size={16} /></button>
+                                </>
+                              ) : (
+                                <>
+                                  <button onClick={() => { setEditingId(item.id); setEditingQty(item.quantity); }} className="btn btn-sm btn-outline-primary border-0 rounded-circle p-2"><Edit2 size={16} /></button>
+                                  <button onClick={() => handleDeleteSale(item.id)} className="btn btn-sm btn-outline-danger border-0 rounded-circle p-2"><Trash2 size={16} /></button>
+                                </>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
