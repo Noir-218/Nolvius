@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { Search, Save, History, PackageOpen, ChevronLeft, ChevronRight, AlertCircle, CupSoda } from 'lucide-react';
+import { Search, Save, History, PackageOpen, ChevronLeft, ChevronRight, AlertCircle, CupSoda, Upload, Download } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { TeaAndCakeAuditTab } from '../components/audit/TeaAndCakeAuditTab';
 import { useAuth } from '../contexts/AuthContext';
 import { format, parseISO, subDays, startOfMonth } from 'date-fns';
@@ -185,22 +186,44 @@ export default function Audit() {
     });
     setOpeningStockMap(computedOpening);
 
-    // 4. Fetch transaction summary for selectedDate
+    // 4. Fetch all transactions since month start up to selectedDate
     const { data: txData } = await supabase
       .from('stock_transactions')
-      .select('ingredient_id, type, quantity')
-      .eq('transaction_date', selectedDate);
+      .select('ingredient_id, type, quantity, transaction_date')
+      .gte('transaction_date', startOfThisMonth)
+      .lte('transaction_date', selectedDate);
 
     const txSummary: DailyTxSummary = {};
     if (txData) {
       txData.forEach((tx: any) => {
         if (!tx.ingredient_id) return;
-        if (!txSummary[tx.ingredient_id]) txSummary[tx.ingredient_id] = { in: 0, out: 0 };
-        const qty = Math.abs(Number(tx.quantity));
-        if (['IN', 'IN_TRANSFER'].includes(tx.type)) {
-          txSummary[tx.ingredient_id].in += qty;
-        } else if (['OUT', 'WASTE', 'SALES_USAGE'].includes(tx.type)) {
-          txSummary[tx.ingredient_id].out += qty;
+        
+        // Find if there's a prior audit date for THIS specific ingredient
+        // priorAudits was ordered descending by date, so we can find the first one < selectedDate
+        const priorAuditForIng = (priorAudits || []).find(a => a.ingredient_id === tx.ingredient_id);
+        const lastDate = priorAuditForIng ? priorAuditForIng.audit_date : null;
+
+        // Condition:
+        // 1. If it's the selectedDate, always count it.
+        // 2. If it's before selectedDate, only count if it's AFTER the last audit date.
+        let shouldCount = false;
+        if (tx.transaction_date === selectedDate) {
+          shouldCount = true;
+        } else if (lastDate && tx.transaction_date > lastDate) {
+          shouldCount = true;
+        } else if (!lastDate && tx.transaction_date < selectedDate) {
+          // If no prior audit this month, count all since month start
+          shouldCount = true;
+        }
+
+        if (shouldCount) {
+          if (!txSummary[tx.ingredient_id]) txSummary[tx.ingredient_id] = { in: 0, out: 0 };
+          const qty = Math.abs(Number(tx.quantity));
+          if (['IN', 'IN_TRANSFER'].includes(tx.type)) {
+            txSummary[tx.ingredient_id].in += qty;
+          } else if (['OUT', 'WASTE', 'SALES_USAGE'].includes(tx.type)) {
+            txSummary[tx.ingredient_id].out += qty;
+          }
         }
       });
     }
@@ -268,6 +291,68 @@ export default function Audit() {
     else if (viewMode === 'history') fetchHistory();
   }, [viewMode, selectedDate]);
 
+  const handleExcelImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const bstr = evt.target?.result;
+        const wb = XLSX.read(bstr, { type: 'binary' });
+        const wsname = wb.SheetNames[0];
+        const ws = wb.Sheets[wsname];
+        const data = XLSX.utils.sheet_to_json(ws) as any[];
+
+        const newStoreStocks: Record<string, string> = { ...storeStocks };
+        const newCounterStocks: Record<string, string> = { ...counterStocks };
+        let matchCount = 0;
+
+        data.forEach((row: any) => {
+          // Normalize keys to handle variations in naming or spacing
+          const id = row['Mã nguyên liệu'] || row['Ma nguyen lieu'] || row['ID'];
+          const storeVal = row['Kho(số tồn kho)'] || row['Kho'] || row['Store'];
+          const counterVal = row['Cửa hàng(số tồn bên ngoài quầy)'] || row['Cửa hàng'] || row['Counter'];
+
+          if (id) {
+            const ingId = id.toString().trim();
+            // Check if ingredient exists in our state
+            const exists = ingredients.some(ing => ing.id === ingId);
+            if (exists) {
+              if (storeVal !== undefined) newStoreStocks[ingId] = storeVal.toString();
+              if (counterVal !== undefined) newCounterStocks[ingId] = counterVal.toString();
+              matchCount++;
+            }
+          }
+        });
+
+        setStoreStocks(newStoreStocks);
+        setCounterStocks(newCounterStocks);
+        alert(`Đã nhập dữ liệu cho ${matchCount} nguyên liệu thành công! Hãy kiểm tra lại và nhấn Lưu.`);
+      } catch (err) {
+        console.error(err);
+        alert('Lỗi khi đọc file Excel!');
+      }
+      // Reset input
+      e.target.value = '';
+    };
+    reader.readAsBinaryString(file);
+  };
+
+  const downloadTemplate = () => {
+    const templateData = ingredients.map(ing => ({
+      'Mã nguyên liệu': ing.id,
+      'Tên nguyên liệu': ing.name,
+      'Kho(số tồn kho)': '',
+      'Cửa hàng(số tồn bên ngoài quầy)': ''
+    }));
+    
+    const ws = XLSX.utils.json_to_sheet(templateData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Kiểm kê");
+    XLSX.writeFile(wb, `Template_KiemKe_${selectedDate}.xlsx`);
+  };
+
   const handleSaveAudit = async () => {
     const filledKeys = Object.keys(storeStocks).concat(Object.keys(counterStocks))
       .filter((v, i, a) => a.indexOf(v) === i)
@@ -280,6 +365,7 @@ export default function Audit() {
 
     setSaving(true);
     try {
+      const hugeVariances: string[] = [];
       const toUpdate: any[] = [];
       const toInsert: any[] = [];
 
@@ -307,6 +393,12 @@ export default function Audit() {
         const tx = dailyTx[id] || { in: 0, out: 0 };
         const theoretical = opening + tx.in - tx.out;
 
+        // Collect names for items with huge variance
+        if (theoretical > 0 && Math.abs(actual - theoretical) > (theoretical * 0.2)) {
+          const ingName = ingredients.find(i => i.id === id)?.name || id;
+          hugeVariances.push(ingName);
+        }
+
         const base = {
           ingredient_id: id,
           audit_date: selectedDate,
@@ -326,6 +418,17 @@ export default function Audit() {
           toInsert.push(base);
         }
       });
+
+      // Confirmation for huge variances
+      if (hugeVariances.length > 0) {
+        const msg = `CẢNH BÁO: Phát hiện ${hugeVariances.length} nguyên liệu có chênh lệch rất lớn (>20%).\n\n` +
+          hugeVariances.slice(0, 5).join(', ') + (hugeVariances.length > 5 ? '...' : '') + 
+          `\n\nBạn có CHẮC CHẮN dữ liệu này là đúng không?`;
+        if (!window.confirm(msg)) {
+          setSaving(false);
+          return;
+        }
+      }
 
       if (toUpdate.length > 0) {
         const { error } = await supabase
@@ -606,6 +709,28 @@ export default function Audit() {
                 <div className="col-auto"><button onClick={() => setViewMode('history')} className="btn btn-outline-secondary border-2 fw-bold small d-flex align-items-center justify-content-center gap-2 py-2 shadow-sm rounded-pill transition-all"><History size={16} /> Lịch Sử</button></div>
               </>
             )}
+            <div className="col-auto">
+              <button 
+                onClick={downloadTemplate}
+                className="btn btn-outline-info border-2 fw-bold small d-flex align-items-center justify-content-center gap-2 py-2 shadow-sm rounded-pill transition-all"
+                title="Tải file mẫu Excel"
+              >
+                <Download size={16} />
+                <span className="d-none d-sm-inline">Mẫu</span>
+              </button>
+            </div>
+            <div className="col-auto">
+              <label className="btn btn-outline-primary border-2 fw-bold small d-flex align-items-center justify-content-center gap-2 py-2 shadow-sm rounded-pill transition-all cursor-pointer mb-0">
+                <Upload size={16} />
+                <span className="d-none d-sm-inline">Nhập Excel</span>
+                <input
+                  type="file"
+                  accept=".xlsx, .xls"
+                  onChange={handleExcelImport}
+                  className="d-none"
+                />
+              </label>
+            </div>
             <div className="col-auto"><button onClick={handleSaveAudit} disabled={saving || filledCount === 0 || !canEdit} className="btn btn-primary fw-bold d-flex align-items-center justify-content-center gap-2 py-2 shadow-sm rounded-pill transition-all border-2 border-primary px-4"><Save size={16} /> {saving ? '...' : `Lưu (${filledCount})`}</button></div>
           </div>
         </div>
@@ -699,12 +824,23 @@ export default function Audit() {
                 const hasInput = storeVal !== '' || counterVal !== '';
                 const actualValue = hasInput ? store + counter : null;
                 const varianceValue = actualValue !== null ? actualValue - theoretical : null;
+                
+                // Huge variance check (> 20%)
+                // Only warn if theoretical is > 0 to avoid false positives on 0-stock items
+                const isHugeVariance = hasInput && theoretical > 0 && Math.abs(varianceValue ?? 0) > (theoretical * 0.2);
 
                 return (
-                  <tr key={ing.id} className={`${isOutOfSync ? 'table-warning' : ''} transition-all`}>
+                  <tr key={ing.id} className={`${isOutOfSync ? 'table-warning' : ''} ${isHugeVariance ? 'bg-danger bg-opacity-10' : ''} transition-all`}>
                     <td className="px-4 py-3 fw-bold text-dark">
                       <div className="d-flex flex-column">
-                        <span className="text-uppercase small fw-black tracking-tight">{ing.name}</span>
+                        <div className="d-flex align-items-center gap-2">
+                          <span className="text-uppercase small fw-black tracking-tight">{ing.name}</span>
+                          {isHugeVariance && (
+                            <div className="badge bg-danger text-white border border-danger-emphasis d-flex align-items-center gap-1 shadow-sm px-1 py-1" style={{ fontSize: '8px' }} title="Chênh lệch quá lớn (>20%) so với sổ sách!">
+                              <AlertCircle size={10} /> SAI LỆCH CAO
+                            </div>
+                          )}
+                        </div>
                         <span className="text-secondary opacity-50 fst-italic" style={{ fontSize: '10px' }}>({ing.unit})</span>
                       </div>
                       {isOutOfSync && (

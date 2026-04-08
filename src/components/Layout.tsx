@@ -59,7 +59,7 @@ const Layout = () => {
 
   const toggleMenu = () => setIsMenuOpen(!isMenuOpen);
 
-  const filteredNavItems = navItems.filter(item => 
+  const filteredNavItems = navItems.filter(item =>
     !item.roles || item.roles.includes(role || 'staff')
   );
 
@@ -67,7 +67,7 @@ const Layout = () => {
     <div className="flex h-screen bg-gray-50 overflow-hidden font-sans">
       {/* Mobile Sidebar Overlay */}
       {isMenuOpen && (
-        <div 
+        <div
           className="fixed inset-0 bg-gray-900/50 z-20 lg:hidden backdrop-blur-sm"
           onClick={() => setIsMenuOpen(false)}
         />
@@ -79,8 +79,8 @@ const Layout = () => {
         ${isMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
       `}>
         <div className="h-16 flex items-center justify-between px-6 border-b border-gray-200 bg-blue-600">
-          <h1 className="text-lg font-bold text-white truncate">Coffee Inventory</h1>
-          <button 
+          <h1 className="text-lg font-bold text-white truncate">NVC ALL IN ONE</h1>
+          <button
             onClick={() => setIsMenuOpen(false)}
             className="lg:hidden text-white p-1 hover:bg-blue-700 rounded-md"
           >
@@ -134,7 +134,7 @@ const Layout = () => {
               {navItems.find(item => item.path === location.pathname)?.label || 'Quản Lý Kho'}
             </h2>
           </div>
-          
+
           <div className="flex items-center bg-gray-100 px-2 sm:px-3 py-1.5 rounded-full border border-gray-200">
             <div className="w-6 h-6 rounded-full bg-blue-500 flex items-center justify-center text-white text-xs font-bold mr-2 uppercase">
               {role?.charAt(0) || user?.email?.charAt(0).toUpperCase() || 'U'}

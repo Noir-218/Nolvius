@@ -1,11 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import {
   Plus, Trash2, Save,
   CheckCircle2, AlertTriangle, AlertCircle,
   XCircle, FlaskConical, Clock, RefreshCw,
+  Camera,
 } from 'lucide-react';
+import html2canvas from 'html2canvas';
 import { format, addDays, parseISO, differenceInCalendarDays } from 'date-fns';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -88,7 +90,7 @@ const newLot = (ingId: string, type: ItemType, date: string): AuditLot => ({
 const CATEGORY_NAME = 'Trà & Bánh';
 
 // ─── MAX empty rows per ingredient (để bảng trông đều) ───────────────────────
-const MIN_ROWS = 3; // mỗi ingredient luôn hiển thị ít nhất 3 dòng
+const MIN_ROWS = 1; // Hiển thị số dòng thực tế, không ép buộc 2 dòng để bảng gọn gàng hơn
 
 interface Props {
   selectedDate: string;
@@ -102,6 +104,8 @@ export const TeaAndCakeAuditTab: React.FC<Props> = ({ selectedDate }) => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savedIds, setSavedIds] = useState<string[]>([]);
+  const teaRef = useRef<HTMLDivElement>(null);
+  const cakeRef = useRef<HTMLDivElement>(null);
 
   // ── Fetch ─────────────────────────────────────────────────────────────────────
 
@@ -342,6 +346,30 @@ export const TeaAndCakeAuditTab: React.FC<Props> = ({ selectedDate }) => {
     setSaving(false);
   };
 
+  // ── Export Image ─────────────────────────────────────────────────────────────
+
+  const handleExportImage = async (type: ItemType) => {
+    const targetRef = type === 'tea' ? teaRef : cakeRef;
+    if (!targetRef.current) return;
+
+    try {
+      const canvas = await html2canvas(targetRef.current, {
+        scale: 2, // High resolution
+        useCORS: true,
+        backgroundColor: '#ffffff',
+      });
+
+      const fileName = `Kiem-Ke-${type === 'tea' ? 'Tra' : 'Banh'}-${format(parseISO(selectedDate), 'dd-MM-yyyy')}.png`;
+      const link = document.createElement('a');
+      link.download = fileName;
+      link.href = canvas.toDataURL('image/png', 1.0);
+      link.click();
+    } catch (err) {
+      console.error('Lỗi khi xuất ảnh:', err);
+      alert('Đã có lỗi xảy ra khi tạo ảnh. Vui lòng thử lại.');
+    }
+  };
+
   // ── Stats ─────────────────────────────────────────────────────────────────────
 
   const allLots = groups.flatMap(g => g.lots);
@@ -359,142 +387,156 @@ export const TeaAndCakeAuditTab: React.FC<Props> = ({ selectedDate }) => {
     const isTea = type === 'tea';
 
     return (
-      <div className={`rounded-xl border shadow-sm mb-5 ${isTea ? 'border-teal-200' : 'border-amber-200'} overflow-hidden`}>
+      <div 
+        ref={isTea ? teaRef : cakeRef}
+        className={`rounded-lg border shadow-sm mb-8 ${isTea ? 'border-slate-300' : 'border-amber-300'} overflow-hidden bg-white`}
+      >
         {/* Section title bar */}
-        <div className={`px-5 py-2.5 flex items-center gap-3 ${isTea ? 'bg-teal-50 border-b border-teal-200' : 'bg-amber-50 border-b border-amber-200'}`}>
-          <span className={`font-black text-sm ${isTea ? 'text-teal-800' : 'text-amber-800'}`}>
-            {isTea ? '🍵 TRÀ' : '🍰 BÁNH'}
-          </span>
-          <span className="text-xs text-gray-400">· HSD = NSX + {SHELF_LIFE[type]} ngày · {sectionGroups.length} loại</span>
+        <div className={`px-4 py-2 flex items-center justify-between ${isTea ? 'bg-slate-50 border-b border-slate-300' : 'bg-amber-50 border-b border-amber-300'}`}>
+          <div className="flex items-center gap-2">
+            <span className={`font-black text-[13px] tracking-tight ${isTea ? 'text-slate-700' : 'text-amber-800'}`}>
+              {isTea ? '📊 BẢNG KIỂM TRÀ' : '📊 BẢNG KIỂM BÁNH'}
+            </span>
+            <span className="text-[11px] text-slate-400 font-medium italic">
+              (HSD = {SHELF_LIFE[type]} ngày)
+            </span>
+          </div>
+          
+          <button
+            onClick={() => handleExportImage(type)}
+            data-html2canvas-ignore="true"
+            className={`flex items-center gap-1.5 px-3 py-1 rounded border text-[11px] font-bold uppercase transition-all shadow-sm ${
+              isTea 
+                ? 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50' 
+                : 'bg-white text-amber-700 border-amber-300 hover:bg-amber-50'
+            }`}
+          >
+            <Camera size={13} />
+            Lưu Ảnh Bảng
+          </button>
         </div>
 
-        {/* Table container with overflow */}
-        <div className="overflow-x-auto custom-scrollbar">
-          <table className="min-w-full text-sm border-collapse bg-white">
-            <thead>
-              <tr className="border-b-2 border-gray-300 bg-gray-50">
-                <th className="px-4 py-2.5 text-center text-xs font-black text-gray-600 uppercase tracking-wider w-72 border-r border-gray-200">
-                  Tên {isTea ? 'Trà' : 'Bánh'}
-                </th>
-                <th className="px-4 py-2.5 text-center text-xs font-black text-gray-600 uppercase tracking-wider w-24 border-r border-gray-200">
-                  Số Lượng
-                </th>
-                <th className="px-4 py-2.5 text-center text-xs font-black text-gray-600 uppercase tracking-wider w-36 border-r border-gray-200">
-                  NSX
-                </th>
-                <th className="px-4 py-2.5 text-center text-xs font-black text-gray-600 uppercase tracking-wider w-28 border-r border-gray-200">
-                  HSD
-                </th>
-                <th className="px-4 py-2.5 text-center text-xs font-black text-gray-600 uppercase tracking-wider w-40">
-                  Tình Trạng
-                </th>
-                <th className="w-8 border-l border-gray-200"></th>
+        {/* Table container */}
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-xs border-collapse table-fixed bg-white">
+            <thead className="bg-slate-100 border-b border-slate-300">
+              <tr>
+                <th colSpan={2} className="px-3 py-2 text-left font-bold text-slate-700 border-r border-slate-300 w-80">Thông tin sản phẩm</th>
+                <th colSpan={2} className="px-3 py-2 text-center font-bold text-slate-700 border-r border-slate-300">Thông tin kiểm kê</th>
+                <th className="px-3 py-2 text-center font-bold text-slate-700 w-32 border-r border-slate-300">HSD</th>
+                <th className="px-3 py-2 text-center font-bold text-slate-700 w-40">Tình trạng</th>
+                <th className="w-8 border-l border-slate-300" data-html2canvas-ignore="true"></th>
+              </tr>
+              <tr className="bg-slate-50 text-[10px] uppercase tracking-wider text-slate-500 border-b border-slate-300">
+                <th className="px-3 py-1.5 text-center border-r border-slate-200">Tên Nguyên Liệu</th>
+                <th className="px-2 py-1.5 text-center border-r border-slate-300 w-16">ĐVT</th>
+                <th className="px-2 py-1.5 text-center border-r border-slate-200 w-24">Số lượng</th>
+                <th className="px-2 py-1.5 text-center border-r border-slate-300 w-40">Ngày sản xuất</th>
+                <th className="border-r border-slate-200"></th>
+                <th className=""></th>
+                <th className="border-l border-slate-300" data-html2canvas-ignore="true"></th>
               </tr>
             </thead>
             <tbody>
-              {sectionGroups.map((group, gIdx) => {
-                // Đảm bảo luôn có ít nhất MIN_ROWS dòng (thêm dòng trống padding)
+              {sectionGroups.map((group) => {
                 const displayLots = [...group.lots];
                 while (displayLots.length < MIN_ROWS) {
                   displayLots.push({ ingredient_id: group.ingredient_id, manufacture_date: '', expiry_date: '', quantity: '', notes: '' });
                 }
                 const rowCount = displayLots.length;
-                const isLastGroup = gIdx === sectionGroups.length - 1;
 
                 return displayLots.map((lot, lotIdx) => {
                   const isReal = lotIdx < group.lots.length;
                   const isFirstRow = lotIdx === 0;
-                  const isLastRow = lotIdx === rowCount - 1;
+                  const isLastRowInGroup = lotIdx === rowCount - 1;
                   const status = isReal ? getStatus(lot, type) : null;
                   const StatusIcon = status?.Icon;
-
-                  const rowBorderBottom = isLastRow && !isLastGroup
-                    ? 'border-b-2 border-gray-300'
-                    : 'border-b border-gray-100';
+                  const borderClass = isLastRowInGroup ? 'border-b-2 border-slate-300' : 'border-b border-slate-100';
 
                   return (
-                    <tr key={`${group.ingredient_id}-${lotIdx}`} className={`group/row transition-colors ${rowBorderBottom} ${status?.cell ?? ''}`}>
-
-                      {/* Tên NVL — gộp ô theo ingredient */}
+                    <tr 
+                      key={`${group.ingredient_id}-${lotIdx}`} 
+                      className="group/row transition-colors hover:bg-blue-50/40"
+                    >
+                      {/* Tên NVL */}
                       {isFirstRow && (
-                        <td
-                          rowSpan={rowCount}
-                          className="px-4 py-3 text-center border-r border-gray-200 align-middle bg-white"
-                          style={{ borderBottom: isLastGroup ? undefined : '2px solid #d1d5db' }}
-                        >
-                          <div className="font-bold text-gray-800 text-sm leading-tight whitespace-nowrap">{group.ingredient_name}</div>
-                          {/* Nút thêm lô */}
-                          <button
-                            onClick={() => addLot(group.ingredient_id)}
-                            className="mt-2 flex items-center gap-1 text-[11px] font-bold text-blue-500 hover:text-blue-700 hover:bg-blue-50 px-2 py-0.5 rounded-md transition-all mx-auto"
+                        <>
+                          <td
+                            rowSpan={rowCount}
+                            className={`px-3 py-2 border-r border-slate-200 bg-white align-middle text-center ${borderClass}`}
                           >
-                            <Plus size={11} /> Thêm lô
-                          </button>
-                        </td>
+                            <div className="flex flex-col items-center justify-center min-h-[2.5rem]">
+                              <div className="font-bold text-slate-800 text-[12px] leading-tight">{group.ingredient_name}</div>
+                              <button
+                                onClick={() => addLot(group.ingredient_id)}
+                                className="mt-1 flex items-center gap-1 text-[10px] font-bold text-blue-600 hover:text-blue-800 hover:underline transition-all opacity-40 hover:opacity-100"
+                              >
+                                <Plus size={10} /> Thêm lô
+                              </button>
+                            </div>
+                          </td>
+                          <td rowSpan={rowCount} className={`px-2 py-2 text-center text-slate-500 font-medium border-r border-slate-300 bg-white align-middle w-16 ${borderClass}`}>
+                            {group.unit}
+                          </td>
+                        </>
                       )}
 
                       {/* Số lượng */}
-                      <td className="px-3 py-2 text-center border-r border-gray-200">
+                      <td className={`px-1 py-1 text-center border-r border-slate-200 ${!isReal ? 'bg-slate-50/20' : ''} ${borderClass}`}>
                         {isReal ? (
                           <input
                             type="number"
                             min="0"
-                            placeholder=""
                             value={lot.quantity}
                             onChange={e => updateLot(group.ingredient_id, lotIdx, 'quantity', e.target.value === '' ? '' : Number(e.target.value))}
-                            className="w-16 text-center border border-gray-200 rounded-md px-1.5 py-1 text-sm font-bold focus:outline-none focus:border-blue-400 bg-transparent"
+                            className="w-full h-8 text-center bg-transparent border-0 focus:ring-1 focus:ring-blue-400 focus:bg-white rounded py-0 font-bold text-slate-800 text-sm outline-none leading-8"
+                            placeholder="0"
                           />
-                        ) : (
-                          <span className="text-gray-200">—</span>
-                        )}
+                        ) : null}
                       </td>
 
                       {/* NSX */}
-                      <td className="px-3 py-2 text-center border-r border-gray-200">
+                      <td className={`px-1 py-1 text-center border-r border-slate-300 ${!isReal ? 'bg-slate-50/20' : ''} ${borderClass}`}>
                         {isReal ? (
                           <input
                             type="date"
                             value={lot.manufacture_date}
                             max={today}
                             onChange={e => updateLot(group.ingredient_id, lotIdx, 'manufacture_date', e.target.value)}
-                            className="border border-gray-200 rounded-md px-2 py-1 text-xs font-medium focus:outline-none focus:border-blue-400 bg-transparent w-full"
+                            className="w-full h-8 bg-transparent border-0 focus:ring-1 focus:ring-blue-400 focus:bg-white rounded py-0 text-[11px] text-slate-600 font-medium outline-none text-center leading-8"
                           />
-                        ) : (
-                          <span className="text-gray-200">—</span>
-                        )}
+                        ) : null}
                       </td>
 
                       {/* HSD */}
-                      <td className="px-3 py-2 text-center border-r border-gray-200">
+                      <td className={`px-2 py-1 text-center border-r border-slate-200 ${!isReal ? 'bg-slate-50/20' : ''} ${borderClass}`}>
                         {isReal && lot.expiry_date ? (
-                          <span className="text-sm font-bold text-gray-800">
-                            {format(parseISO(lot.expiry_date), 'dd/MM/yyyy')}
-                          </span>
-                        ) : (
-                          <span className="text-gray-200">—</span>
-                        )}
+                          <div className="h-8 flex items-center justify-center">
+                            <span className="text-slate-800 font-bold leading-none">
+                              {format(parseISO(lot.expiry_date), 'dd/MM/yy')}
+                            </span>
+                          </div>
+                        ) : null}
                       </td>
 
                       {/* Tình trạng */}
-                      <td className={`px-4 py-2 text-center ${status?.cell ?? ''}`}>
+                      <td className={`px-3 py-1 text-center ${status?.cell ?? ''} ${!isReal ? 'bg-slate-50/20' : ''} ${borderClass}`}>
                         {isReal && status && StatusIcon ? (
-                          <span className={`inline-flex items-center justify-center gap-1.5 text-sm whitespace-nowrap ${status.chip}`}>
-                            <StatusIcon size={13} />
-                            {status.label}
-                          </span>
-                        ) : (
-                          <span className="text-gray-200">—</span>
-                        )}
+                          <div className={`flex items-center justify-center gap-1.5 h-8 text-[11px] font-bold ${status.chip}`}>
+                            <StatusIcon size={12} className="shrink-0" />
+                            <span className="leading-none">{status.label}</span>
+                          </div>
+                        ) : null}
                       </td>
 
                       {/* Xóa */}
-                      <td className="px-1 py-2 text-center border-l border-gray-100">
+                      <td className={`px-1 py-1 text-center border-l border-slate-100 ${borderClass}`}>
                         {isReal && (
                           <button
                             onClick={() => removeLot(group.ingredient_id, lotIdx)}
-                            className="p-1 text-gray-200 hover:text-red-400 hover:bg-red-50 rounded transition-all opacity-0 group-hover/row:opacity-100"
+                            className="p-1 text-slate-300 hover:text-red-500 transition-colors opacity-40 hover:opacity-100"
                           >
-                            <Trash2 size={13} />
+                            <Trash2 size={12} />
                           </button>
                         )}
                       </td>

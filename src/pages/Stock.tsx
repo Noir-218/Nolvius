@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { Search, AlertTriangle, AlertCircle, CheckCircle2, ClipboardList, Calendar } from 'lucide-react';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, startOfMonth } from 'date-fns';
 
 interface IngredientRow {
   id: string;
@@ -13,7 +13,17 @@ interface IngredientRow {
   stock_in_store: number | null;
   stock_in_counter: number | null;
   actual_stock: number | null;
+  theoretical_stock: number | null;
   audit_date: string | null;
+  // calculated
+  monthly_variance: number;
+  current_theoretical: number | null;
+  order_type_id: string | null;
+}
+
+interface OrderType {
+  id: string;
+  name: string;
 }
 
 const Stock = () => {
@@ -22,14 +32,26 @@ const Stock = () => {
   const [search, setSearch] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
   const [categories, setCategories] = useState<string[]>([]);
+  const [filterOrderType, setFilterOrderType] = useState('');
+  const [orderTypes, setOrderTypes] = useState<OrderType[]>([]);
 
   const fetchStock = async () => {
     setLoading(true);
 
+    const now = new Date();
+    const monthStart = format(startOfMonth(now), 'yyyy-MM-dd');
+
+    // 0. Fetch order types
+    const { data: typesData } = await supabase
+      .from('ingredient_order_types')
+      .select('id, name')
+      .order('name');
+    setOrderTypes(typesData || []);
+
     // 1. Fetch all ingredients
     const { data: ingData } = await supabase
       .from('ingredients')
-      .select('id, name, unit, min_stock, ingredient_categories(name)')
+      .select('id, name, unit, min_stock, order_type_id, ingredient_categories(name)')
       .order('name');
 
     if (!ingData) {
@@ -37,31 +59,97 @@ const Stock = () => {
       return;
     }
 
-    // 2. Fetch most recent audit for each ingredient
-    const { data: auditData } = await supabase
+    // 2. Fetch all audits for this month (to calculate cumulative loss)
+    const { data: monthlyAudits } = await supabase
       .from('stock_audits')
-      .select('ingredient_id, stock_in_store, stock_in_counter, actual_stock, audit_date')
+      .select('ingredient_id, actual_stock, theoretical_stock, audit_date')
+      .gte('audit_date', monthStart)
+      .order('audit_date', { ascending: false });
+
+    // Build map: ingredient_id → { latest_actual, latest_date, cumulative_variance }
+    const auditStats: Record<string, { 
+      latest_actual: number | null, 
+      latest_theoretical: number | null,
+      latest_date: string | null, 
+      cumulative_variance: number,
+      latest_in_store: number | null,
+      latest_in_counter: number | null
+    }> = {};
+
+    // We also need the very latest audit (even if not this month, but for current stock view)
+    const { data: allLatestAudits } = await supabase
+      .from('stock_audits')
+      .select('ingredient_id, stock_in_store, stock_in_counter, actual_stock, theoretical_stock, audit_date')
       .order('audit_date', { ascending: false })
       .order('created_at', { ascending: false });
 
-    // Build map: ingredient_id → latest audit data
     const latestAuditMap: Record<string, any> = {};
-    if (auditData) {
-      auditData.forEach((a: any) => {
+    if (allLatestAudits) {
+      allLatestAudits.forEach((a: any) => {
         if (a.ingredient_id && latestAuditMap[a.ingredient_id] === undefined) {
-          latestAuditMap[a.ingredient_id] = {
-            stock_in_store: a.stock_in_store,
-            stock_in_counter: a.stock_in_counter,
-            actual_stock: a.actual_stock ?? 0,
-            audit_date: a.audit_date,
-          };
+          latestAuditMap[a.ingredient_id] = a;
         }
       });
     }
 
-    // 3. Merge
+    if (monthlyAudits) {
+      monthlyAudits.forEach((a: any) => {
+        if (!a.ingredient_id) return;
+        if (!auditStats[a.ingredient_id]) {
+          auditStats[a.ingredient_id] = {
+            latest_actual: null,
+            latest_theoretical: null,
+            latest_date: null,
+            cumulative_variance: 0,
+            latest_in_store: null,
+            latest_in_counter: null
+          };
+        }
+        // Cumulative variance = sum of (actual - theoretical)
+        const v = (a.actual_stock ?? 0) - (a.theoretical_stock ?? 0);
+        auditStats[a.ingredient_id].cumulative_variance += v;
+      });
+    }
+
+    // 3. Fetch transactions since the latest audit for each ingredient
+    // To calculate "Current Theoretical Stock"
+    // For simplicity in a loop-less way, we'll fetch all tx since month start
+    const { data: recentTx } = await supabase
+      .from('stock_transactions')
+      .select('ingredient_id, type, quantity, transaction_date')
+      .gte('transaction_date', monthStart);
+
+    const txSinceMap: Record<string, number> = {};
+    if (recentTx) {
+      recentTx.forEach(tx => {
+        const id = tx.ingredient_id;
+        if (!id) return; // Fix null index error
+        
+        const latestDate = latestAuditMap[id]?.audit_date;
+        
+        // Only count transactions happening AFTER the latest audit date
+        // Note: If transaction_date === audit_date, it's already included in the audit's theoretical_stock
+        if (latestDate && tx.transaction_date > latestDate) {
+          const qty = Number(tx.quantity);
+          const change = ['IN', 'IN_TRANSFER'].includes(tx.type) ? qty : -Math.abs(qty);
+          txSinceMap[id] = (txSinceMap[id] ?? 0) + change;
+        } else if (!latestDate) {
+          // If never audited, count everything from month start (theoretical starts at 0 or monthly opening)
+          const qty = Number(tx.quantity);
+          const change = ['IN', 'IN_TRANSFER'].includes(tx.type) ? qty : -Math.abs(qty);
+          txSinceMap[id] = (txSinceMap[id] ?? 0) + change;
+        }
+      });
+    }
+
+    // 4. Merge
     const merged: IngredientRow[] = ingData.map((ing: any) => {
       const latest = latestAuditMap[ing.id];
+      const stats = auditStats[ing.id];
+      
+      const latestActual = latest ? (latest.actual_stock ?? 0) : null;
+      const changeSince = txSinceMap[ing.id] ?? 0;
+      
       return {
         id: ing.id,
         name: ing.name,
@@ -70,8 +158,12 @@ const Stock = () => {
         category_name: ing.ingredient_categories?.name ?? null,
         stock_in_store: latest ? latest.stock_in_store : null,
         stock_in_counter: latest ? latest.stock_in_counter : null,
-        actual_stock: latest ? latest.actual_stock : null,
+        actual_stock: latestActual,
+        theoretical_stock: latest ? latest.theoretical_stock : null,
         audit_date: latest ? latest.audit_date : null,
+        monthly_variance: stats ? stats.cumulative_variance : 0,
+        current_theoretical: latestActual !== null ? latestActual + changeSince : null,
+        order_type_id: ing.order_type_id
       };
     });
 
@@ -97,7 +189,8 @@ const Stock = () => {
   const filtered = rows.filter(r => {
     const matchSearch = r.name.toLowerCase().includes(search.toLowerCase());
     const matchCat = filterCategory ? r.category_name === filterCategory : true;
-    return matchSearch && matchCat;
+    const matchOrderType = filterOrderType ? r.order_type_id === filterOrderType : true;
+    return matchSearch && matchCat && matchOrderType;
   });
 
   // Stats
@@ -154,6 +247,16 @@ const Stock = () => {
             <option value="">Tất cả danh mục</option>
             {categories.map((c, idx) => <option key={idx} value={c}>{c}</option>)}
           </select>
+          <select
+            value={filterOrderType}
+            onChange={(e) => setFilterOrderType(e.target.value)}
+            className="border border-gray-300 rounded-lg px-4 py-2 focus:ring-blue-500 flex-1 md:w-48 bg-white"
+          >
+            <option value="">Tất cả loại đơn</option>
+            {orderTypes.map(t => (
+              <option key={t.id} value={t.id}>{t.name}</option>
+            ))}
+          </select>
         </div>
       </div>
 
@@ -164,9 +267,9 @@ const Stock = () => {
             <tr>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tên Nguyên Liệu</th>
               <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Đơn Vị</th>
-              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Tồn Kho</th>
-              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Tồn Quầy</th>
-              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Tổng Tồn</th>
+              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Tồn Sổ Sách</th>
+              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Tồn Thực Tế</th>
+              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Hao Hụt (Tháng)</th>
               <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Định Mức</th>
               <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Kiểm Kê Gần Nhất</th>
               <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Trạng Thái</th>
@@ -182,23 +285,25 @@ const Stock = () => {
                 const status = getStatus(item.actual_stock, item.min_stock);
                 const StatusIcon = status.icon;
                 const hasAudit = item.actual_stock !== null;
+                const v = item.monthly_variance;
+                const varianceColor = v < -0.001 ? 'text-red-600' : v > 0.001 ? 'text-blue-600' : 'text-gray-400';
 
                 return (
                   <tr key={item.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{item.name}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-500">{item.unit}</td>
-                    <td className="px-4 py-4 whitespace-nowrap text-right text-sm text-gray-600">
-                      {hasAudit ? item.stock_in_store : '-'}
-                    </td>
-                    <td className="px-4 py-4 whitespace-nowrap text-right text-sm text-gray-600">
-                      {hasAudit ? item.stock_in_counter : '-'}
+                    <td className="px-4 py-4 whitespace-nowrap text-right text-sm font-mono text-gray-500">
+                      {item.current_theoretical !== null ? item.current_theoretical.toLocaleString() : '-'}
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap text-right">
                       {hasAudit ? (
-                        <span className="text-base font-bold text-gray-900">{item.actual_stock}</span>
+                        <span className="text-base font-bold text-gray-900">{item.actual_stock?.toLocaleString()}</span>
                       ) : (
                         <span className="text-sm text-gray-400 italic">Chưa có</span>
                       )}
+                    </td>
+                    <td className={`px-4 py-4 whitespace-nowrap text-right text-sm font-bold ${varianceColor}`}>
+                      {v > 0.001 ? '+' : ''}{v.toLocaleString()}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-gray-500">{item.min_stock ?? '-'}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-center text-xs text-gray-400">

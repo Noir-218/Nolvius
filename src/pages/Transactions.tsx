@@ -25,6 +25,8 @@ interface Transaction {
   branch_id: string | null;
   notes: string | null;
   is_fast_entered: boolean;
+  is_approved: boolean;
+  is_transfer_exported: boolean;
   reference_id: string | null;
   ingredients: { name: string; unit: string } | null;
   suppliers: { name: string } | null;
@@ -37,6 +39,8 @@ interface TransactionGroup {
   transaction_date: string;
   type: string;
   is_fast_entered: boolean;
+  is_approved: boolean;
+  is_transfer_exported: boolean;
   notes: string | null;
   supplier_name: string | null;
   branch_name: string | null;
@@ -79,6 +83,7 @@ export default function Transactions() {
   const [filterDateTo, setFilterDateTo] = useState<string>(today);
   const [filterType, setFilterType] = useState<string>('');
   const [filterBranch, setFilterBranch] = useState<string>('');
+  const [filterStatus, setFilterStatus] = useState<string>('');
   const [search, setSearch] = useState<string>('');
 
   // Modal / Form
@@ -90,6 +95,8 @@ export default function Transactions() {
   const [txBranch, setTxBranch] = useState<string>('');
   const [txNotes, setTxNotes] = useState<string>('');
   const [txIsFast, setTxIsFast] = useState<boolean>(false);
+  const [txIsApproved, setTxIsApproved] = useState<boolean>(false);
+  const [txIsExported, setTxIsExported] = useState<boolean>(false);
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [branches, setBranches] = useState<any[]>([]);
   const [lines, setLines] = useState<LineItem[]>([emptyLine()]);
@@ -121,6 +128,14 @@ export default function Transactions() {
 
     if (filterType) query = query.eq('type', filterType);
     if (filterBranch) query = query.eq('branch_id', filterBranch);
+    
+    // Status filters
+    if (filterStatus === 'FAST') query = query.eq('is_fast_entered', true);
+    if (filterStatus === 'NOT_FAST') query = query.eq('is_fast_entered', false);
+    if (filterStatus === 'APPROVED') query = query.eq('is_approved', true);
+    if (filterStatus === 'NOT_APPROVED') query = query.eq('is_approved', false);
+    if (filterStatus === 'EXPORTED') query = query.eq('is_transfer_exported', true);
+    if (filterStatus === 'NOT_EXPORTED') query = query.eq('is_transfer_exported', false);
 
     const { data } = await query.order('transaction_date', { ascending: false }).order('created_at', { ascending: false });
     if (data) {
@@ -156,7 +171,7 @@ export default function Transactions() {
     setLoading(false);
   };
 
-  useEffect(() => { fetchData(); }, [filterDateFrom, filterDateTo, filterType, filterBranch]);
+  useEffect(() => { fetchData(); }, [filterDateFrom, filterDateTo, filterType, filterBranch, filterStatus]);
 
   const resetForm = () => {
     setEditingReferenceId(null);
@@ -166,6 +181,8 @@ export default function Transactions() {
     setTxBranch('');
     setTxNotes('');
     setTxIsFast(false);
+    setTxIsApproved(false);
+    setTxIsExported(false);
     setLines([emptyLine()]);
   };
 
@@ -203,6 +220,8 @@ export default function Transactions() {
           branch_id: (txType === 'IN_TRANSFER' || txType === 'OUT') && txBranch ? txBranch : null,
           notes: txNotes || null,
           is_fast_entered: txIsFast,
+          is_approved: txIsApproved,
+          is_transfer_exported: txIsExported,
           reference_id: referenceId,
           created_by: user?.id
         };
@@ -311,6 +330,8 @@ export default function Transactions() {
     setTxBranch(group.items[0]?.branch_id || '');
     setTxNotes(group.notes || '');
     setTxIsFast(group.is_fast_entered);
+    setTxIsApproved(group.is_approved || false);
+    setTxIsExported(group.is_transfer_exported || false);
     setLines(group.items.map(item => ({
       id: crypto.randomUUID(),
       ingredient_id: item.ingredient_id,
@@ -392,6 +413,8 @@ export default function Transactions() {
         transaction_date: tx.transaction_date,
         type: tx.type,
         is_fast_entered: tx.is_fast_entered || false,
+        is_approved: tx.is_approved || false,
+        is_transfer_exported: tx.is_transfer_exported || false,
         notes: tx.notes,
         supplier_name: tx.suppliers?.name || null,
         branch_name: tx.branches?.name || null,
@@ -476,6 +499,22 @@ export default function Transactions() {
                     {Object.entries(TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                   </select>
                 </div>
+                <div className="col-6 col-md-auto">
+                  <label className="form-label mb-1 text-uppercase fw-black text-secondary" style={{ fontSize: '10px' }}>Trạng Thái</label>
+                  <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="form-select form-select-sm shadow-sm">
+                    <option value="">Tất cả</option>
+                    <optgroup label="Chứng từ FAST">
+                      <option value="FAST">Đã nhập FAST</option>
+                      <option value="NOT_FAST">Chưa nhập FAST</option>
+                    </optgroup>
+                    <optgroup label="Phiếu lĩnh (Điều chuyển)">
+                      <option value="APPROVED">Đã duyệt</option>
+                      <option value="NOT_APPROVED">Chưa duyệt</option>
+                      <option value="EXPORTED">Đã làm phiếu xuất</option>
+                      <option value="NOT_EXPORTED">Chưa làm phiếu xuất</option>
+                    </optgroup>
+                  </select>
+                </div>
                 <div className="col-12 col-md flex-grow-1">
                   <label className="form-label mb-1 text-uppercase fw-black text-secondary" style={{ fontSize: '10px' }}>Tìm nhanh</label>
                   <div className="input-group input-group-sm shadow-sm">
@@ -493,7 +532,7 @@ export default function Transactions() {
                       <th className="px-4 py-3 border-0 text-center" style={{ width: '40px' }}></th>
                       <th className="px-4 py-3 border-0 small fw-black tracking-widest text-uppercase text-secondary">Ngày</th>
                       <th className="px-4 py-3 border-0 small fw-black tracking-widest text-uppercase text-secondary">Loại Phiếu</th>
-                      <th className="px-4 py-3 border-0 small fw-black tracking-widest text-uppercase text-secondary text-center">FAST</th>
+                      <th className="px-4 py-3 border-0 small fw-black tracking-widest text-uppercase text-secondary text-center">Trạng Thái</th>
                       <th className="px-4 py-3 border-0 small fw-black tracking-widest text-uppercase text-secondary">Ghi Chú</th>
                       <th className="px-4 py-3 border-0 small fw-black tracking-widest text-uppercase text-secondary text-end">Thao tác</th>
                     </tr>
@@ -527,11 +566,41 @@ export default function Transactions() {
                                 </span>
                               </td>
                               <td className="px-4 py-3 text-center">
-                                {group.is_fast_entered ? (
-                                  <span className="badge bg-success-subtle text-success border border-success fw-black small tracking-tighter" style={{ fontSize: '10px' }}>FAST: OK</span>
-                                ) : (
-                                  <span className="badge bg-danger-subtle text-danger border border-danger fw-black small tracking-tighter" style={{ fontSize: '10px' }}>PENDING</span>
-                                )}
+                                <div className="d-flex flex-column align-items-center gap-1">
+                                  {group.type === 'IN_TRANSFER' ? (
+                                    <>
+                                      {group.is_fast_entered ? (
+                                        <span className="badge bg-success-subtle text-success border border-success fw-black small" style={{ fontSize: '9px' }}>LĨNH: OK</span>
+                                      ) : (
+                                        <span className="badge bg-danger-subtle text-danger border border-danger fw-black small" style={{ fontSize: '9px' }}>CHƯA LĨNH</span>
+                                      )}
+                                      {group.is_approved ? (
+                                        <span className="badge bg-primary-subtle text-primary border border-primary fw-black small" style={{ fontSize: '9px' }}>ĐÃ DUYỆT</span>
+                                      ) : (
+                                        <span className="badge bg-secondary-subtle text-secondary border border-secondary fw-black small" style={{ fontSize: '9px' }}>CHƯA DUYỆT</span>
+                                      )}
+                                    </>
+                                  ) : group.type === 'OUT' ? (
+                                    <>
+                                      {group.is_fast_entered ? (
+                                        <span className="badge bg-success-subtle text-success border border-success fw-black small" style={{ fontSize: '9px' }}>NHẬN: OK</span>
+                                      ) : (
+                                        <span className="badge bg-danger-subtle text-danger border border-danger fw-black small" style={{ fontSize: '9px' }}>CHƯA NHẬN</span>
+                                      )}
+                                      {group.is_transfer_exported ? (
+                                        <span className="badge bg-primary-subtle text-primary border border-primary fw-black small" style={{ fontSize: '9px' }}>ĐÃ XUẤT DC</span>
+                                      ) : (
+                                        <span className="badge bg-secondary-subtle text-secondary border border-secondary fw-black small" style={{ fontSize: '9px' }}>CHƯA XUẤT</span>
+                                      )}
+                                    </>
+                                  ) : (
+                                    group.is_fast_entered ? (
+                                      <span className="badge bg-success-subtle text-success border border-success fw-black small" style={{ fontSize: '9px' }}>FAST: OK</span>
+                                    ) : (
+                                      <span className="badge bg-danger-subtle text-danger border border-danger fw-black small" style={{ fontSize: '9px' }}>PENDING</span>
+                                    )
+                                  )}
+                                </div>
                               </td>
                               <td className="px-4 py-3 text-muted small truncate max-w-200">
                                 {group.notes || group.supplier_name || group.branch_name || '-'}
@@ -739,21 +808,74 @@ export default function Transactions() {
           )}
 
           <div className="col-12">
-            <div className={`card p-3 border-0 rounded-3 ${txIsFast ? 'bg-success-subtle border-success border text-success' : 'bg-danger-subtle border-danger border text-danger'}`}>
-              <div className="form-check form-switch d-flex align-items-center gap-3">
-                <input
-                  className="form-check-input"
-                  type="checkbox"
-                  role="switch"
-                  id="isFastSwitch"
-                  checked={txIsFast}
-                  onChange={e => setTxIsFast(e.target.checked)}
-                  style={{ width: '45px', height: '22px' }}
-                />
-                <label className="form-check-label fw-black text-uppercase tracking-widest small mb-0" htmlFor="isFastSwitch">
-                  {txIsFast ? 'ĐÃ NHẬP PHẦN MỀM FAST' : 'CHƯA NHẬP PHẦN MỀM FAST'}
-                </label>
+            <div className="row g-2">
+              {/* Primary status switch (Repurposed is_fast_entered) */}
+              <div className="col-12">
+                <div className={`card p-2 p-md-3 border-0 rounded-3 ${txIsFast ? 'bg-success-subtle border-success border text-success' : 'bg-danger-subtle border-danger border text-danger'}`}>
+                  <div className="form-check form-switch d-flex align-items-center gap-3">
+                    <input
+                      className="form-check-input"
+                      type="checkbox"
+                      role="switch"
+                      id="isFastSwitch"
+                      checked={txIsFast}
+                      onChange={e => setTxIsFast(e.target.checked)}
+                      style={{ width: '45px', height: '22px' }}
+                    />
+                    <label className="form-check-label fw-black text-uppercase tracking-widest small mb-0" htmlFor="isFastSwitch">
+                      {txType === 'IN_TRANSFER' 
+                        ? (txIsFast ? 'ĐÃ LÀM PHIẾU LĨNH VẬT TƯ' : 'CHƯA LÀM PHIẾU LĨNH VẬT TƯ')
+                        : txType === 'OUT'
+                        ? (txIsFast ? 'BÊN NHẬN ĐÃ LÀM PHIẾU LĨNH' : 'BÊN NHẬN CHƯA LÀM PHIẾU LĨNH')
+                        : (txIsFast ? 'ĐÃ NHẬP PHẦN MỀM FAST' : 'CHƯA NHẬP PHẦN MỀM FAST')
+                      }
+                    </label>
+                  </div>
+                </div>
               </div>
+
+              {/* Specific switches for Transfer */}
+              {txType === 'IN_TRANSFER' && (
+                <div className="col-12">
+                  <div className={`card p-2 p-md-3 border-0 rounded-3 ${txIsApproved ? 'bg-primary-subtle border-primary border text-primary' : 'bg-secondary-subtle border-secondary border text-secondary'}`}>
+                    <div className="form-check form-switch d-flex align-items-center gap-3">
+                      <input
+                        className="form-check-input"
+                        type="checkbox"
+                        role="switch"
+                        id="isApprovedSwitch"
+                        checked={txIsApproved}
+                        onChange={e => setTxIsApproved(e.target.checked)}
+                        style={{ width: '45px', height: '22px' }}
+                      />
+                      <label className="form-check-label fw-black text-uppercase tracking-widest small mb-0" htmlFor="isApprovedSwitch">
+                        {txIsApproved ? 'ĐÃ DUYỆT PHIẾU NHẬP ĐIỀU CHUYỂN' : 'CHƯA DUYỆT PHIẾU NHẬP ĐIỀU CHUYỂN'}
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {txType === 'OUT' && (
+                <div className="col-12">
+                  <div className={`card p-2 p-md-3 border-0 rounded-3 ${txIsExported ? 'bg-primary-subtle border-primary border text-primary' : 'bg-secondary-subtle border-secondary border text-secondary'}`}>
+                    <div className="form-check form-switch d-flex align-items-center gap-3">
+                      <input
+                        className="form-check-input"
+                        type="checkbox"
+                        role="switch"
+                        id="isExportedSwitch"
+                        checked={txIsExported}
+                        onChange={e => setTxIsExported(e.target.checked)}
+                        style={{ width: '45px', height: '22px' }}
+                      />
+                      <label className="form-check-label fw-black text-uppercase tracking-widest small mb-0" htmlFor="isExportedSwitch">
+                        {txIsExported ? 'ĐÀ LÀM PHIẾU XUẤT ĐIỀU CHUYỂN' : 'CHƯA LÀM PHIẾU XUẤT ĐIỀU CHUYỂN'}
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
