@@ -7,3 +7,77 @@
     @apply bg-gray-50 text-gray-800 font-sans antialiased;
   }
 }
+
+:root {
+  --teal-600: #0d9488;
+  --teal-700: #0f766e;
+  --teal-800: #115e59;
+  --teal-50: #f0fdfa;
+  --teal-100: #ccfbf1;
+}
+
+@layer utilities {
+  /* Text colors */
+  .text-primary { color: var(--teal-600) !important; }
+  .hover-text-primary:hover { color: var(--teal-700) !important; }
+  .text-primary-emphasis { color: var(--teal-700) !important; }
+  
+  /* Backgrounds */
+  .bg-primary { background-color: var(--teal-600) !important; }
+  .bg-primary-subtle { background-color: var(--teal-50) !important; }
+  
+  /* Borders */
+  .border-primary { border-color: var(--teal-600) !important; }
+  .border-primary-subtle { border-color: var(--teal-100) !important; }
+  
+  /* Buttons */
+  .btn-primary { 
+    background-color: var(--teal-600) !important; 
+    border-color: var(--teal-600) !important;
+    color: white !important;
+  }
+  .btn-primary:hover, .btn-primary:focus, .btn-primary:active {
+    background-color: var(--teal-700) !important;
+    border-color: var(--teal-700) !important;
+    box-shadow: 0 0 0 0.25rem rgba(13, 148, 136, 0.25) !important;
+  }
+  
+  .btn-outline-primary {
+    color: var(--teal-600) !important;
+    border-color: var(--teal-600) !important;
+  }
+  .btn-outline-primary:hover, .btn-outline-primary:active {
+    background-color: var(--teal-600) !important;
+    color: white !important;
+  }
+  
+  /* Form controls */
+  .form-control:focus, .form-select:focus {
+    border-color: var(--teal-600) !important;
+    box-shadow: 0 0 0 0.25rem rgba(13, 148, 136, 0.25) !important;
+  }
+  
+  /* Tabs / Navigation */
+  .nav-pills .nav-link.active, .nav-pills .show > .nav-link {
+    background-color: var(--teal-600) !important;
+    color: white !important;
+  }
+  
+  .nav-link:hover {
+    color: var(--teal-700) !important;
+  }
+
+  /* Badges */
+  .badge.bg-primary {
+    background-color: var(--teal-600) !important;
+  }
+}
+
+.premium-shadow {
+  box-shadow: 0 10px 30px -10px rgba(13, 148, 136, 0.15);
+}
+
+/* Fix for lucide icons inside primary colored elements if needed */
+.btn-primary .lucide, .nav-link.active .lucide {
+  stroke: currentColor;
+}

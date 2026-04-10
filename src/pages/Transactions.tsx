@@ -52,7 +52,8 @@ interface LineItem {
   ingredient_id: string;
   quantity: string;
   unit_name: string; // The name of the selected unit
-  categoryFilter: string;
+  searchTerm?: string;
+  isDropdownOpen?: boolean;
 }
 
 const emptyLine = (): LineItem => ({
@@ -60,7 +61,8 @@ const emptyLine = (): LineItem => ({
   ingredient_id: '',
   quantity: '',
   unit_name: 'base',
-  categoryFilter: '',
+  searchTerm: '',
+  isDropdownOpen: false,
 });
 
 export default function Transactions() {
@@ -73,7 +75,6 @@ export default function Transactions() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [ingredients, setIngredients] = useState<any[]>([]);
   const [allUnits, setAllUnits] = useState<any[]>([]);
-  const [ingredientCategories, setIngredientCategories] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedGroups, setExpandedGroups] = useState<string[]>([]);
 
@@ -151,9 +152,6 @@ export default function Transactions() {
 
     const { data: unitsData } = await supabase.from('ingredient_units').select('*');
     if (unitsData) setAllUnits(unitsData);
-
-    const { data: catData } = await supabase.from('ingredient_categories').select('id, name').order('name');
-    if (catData) setIngredientCategories(catData);
 
     const { data: supData } = await supabase.from('suppliers').select('id, name').order('name');
     if (supData) setSuppliers(supData);
@@ -279,13 +277,17 @@ export default function Transactions() {
         return;
       }
 
-      const newLines: LineItem[] = Object.entries(calcUsages).map(([ingId, qty]) => ({
-        id: crypto.randomUUID(),
-        ingredient_id: ingId,
-        quantity: qty.toString(),
-        unit_name: 'base',
-        categoryFilter: ''
-      }));
+      const newLines: LineItem[] = Object.entries(calcUsages).map(([ingId, qty]) => {
+        const ing = (ingredients || []).find(i => i.id === ingId);
+        return {
+          id: crypto.randomUUID(),
+          ingredient_id: ingId,
+          quantity: qty.toString(),
+          unit_name: 'base',
+          searchTerm: ing?.name || '',
+          isDropdownOpen: false
+        };
+      });
 
       // Add to existing lines, filter out empty first line
       setLines(prev => {
@@ -337,7 +339,8 @@ export default function Transactions() {
       ingredient_id: item.ingredient_id,
       quantity: Math.abs(item.quantity).toString(),
       unit_name: 'base', // On edit, we don't know the original unit used, so default to base
-      categoryFilter: ''
+      searchTerm: item.ingredients?.name || '',
+      isDropdownOpen: false
     })));
     setIsModalOpen(true);
   };
@@ -883,9 +886,6 @@ export default function Transactions() {
             <h6 className="fw-black text-dark text-uppercase tracking-widest small mb-3 border-bottom pb-2">Danh Sách Nguyên Liệu</h6>
             <div className="row g-3">
               {lines.map((line) => {
-                const filteredIngredients = line.categoryFilter
-                  ? ingredients.filter((i: any) => i.ingredient_categories?.id === line.categoryFilter)
-                  : ingredients;
                 const selectedIng = ingredients.find((i: any) => i.id === line.ingredient_id);
                 const availableUnits = allUnits.filter(u => u.ingredient_id === line.ingredient_id);
 
@@ -903,39 +903,73 @@ export default function Transactions() {
                       )}
                       
                       <div className="row g-2">
-                        <div className="col-12 col-md-6">
-                          <label className="form-label mb-1 text-uppercase fw-bold text-secondary opacity-75" style={{ fontSize: '10px' }}>Phân Loại</label>
-                          <select
-                            className="form-select form-select-sm"
-                            value={line.categoryFilter}
-                            onChange={e => setLines(prev => prev.map(l =>
-                              l.id === line.id ? { ...l, categoryFilter: e.target.value, ingredient_id: '' } : l
-                            ))}
-                          >
-                            <option value="">Tất cả danh mục</option>
-                            {ingredientCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                          </select>
+                        <div className="col-12 col-md-8 position-relative">
+                          <label className="form-label mb-1 text-uppercase fw-bold text-secondary opacity-75" style={{ fontSize: '10px' }}>Tìm Nguyên Liệu</label>
+                          <div className="input-group input-group-sm">
+                            <span className="input-group-text bg-white border-end-0 text-muted"><Search size={14} /></span>
+                            <input
+                              type="text"
+                              className="form-control border-start-0 ps-0 fw-bold"
+                              placeholder="Gõ để tìm nhanh (vd: sữa, cafe...)"
+                              value={line.searchTerm || ''}
+                              onChange={(e) => {
+                                const term = e.target.value;
+                                setLines(prev => prev.map(l => 
+                                  l.id === line.id ? { ...l, searchTerm: term, isDropdownOpen: true, ingredient_id: term === '' ? '' : l.ingredient_id } : l
+                                ));
+                              }}
+                              onFocus={() => {
+                                setLines(prev => prev.map(l => 
+                                  l.id === line.id ? { ...l, isDropdownOpen: true } : l
+                                ));
+                              }}
+                              onBlur={() => {
+                                setTimeout(() => {
+                                  setLines(prev => prev.map(l => 
+                                    l.id === line.id ? { ...l, isDropdownOpen: false } : l
+                                  ));
+                                }, 200);
+                              }}
+                            />
+                          </div>
+                          
+                          {/* Dropdown Results */}
+                          {line.isDropdownOpen && (line.searchTerm || '').length > 0 && (
+                            <div className="position-absolute w-100 mt-1 shadow-lg bg-white rounded-3 overflow-hidden border" style={{ zIndex: 1050, left: 0, right: 0 }}>
+                              <div className="list-group list-group-flush" style={{ maxHeight: '200px', overflowY: 'auto' }}>
+                                {ingredients
+                                  .filter(i => i.name.toLowerCase().includes((line.searchTerm || '').toLowerCase()))
+                                  .map(i => (
+                                    <button
+                                      key={i.id}
+                                      type="button"
+                                      className="list-group-item list-group-item-action border-0 py-2 px-3 small d-flex justify-content-between align-items-center"
+                                      onClick={() => {
+                                        setLines(prev => prev.map(l => 
+                                          l.id === line.id ? { ...l, ingredient_id: i.id, searchTerm: i.name, isDropdownOpen: false, unit_name: 'base' } : l
+                                        ));
+                                      }}
+                                    >
+                                      <div>
+                                        <span className="fw-bold">{i.name}</span>
+                                        <div className="text-muted" style={{ fontSize: '10px' }}>{i.ingredient_categories?.name || 'Không có danh mục'}</div>
+                                      </div>
+                                      <span className="badge bg-light text-secondary rounded-pill">{i.unit}</span>
+                                    </button>
+                                  ))}
+                                {ingredients.filter(i => i.name.toLowerCase().includes((line.searchTerm || '').toLowerCase())).length === 0 && (
+                                  <div className="p-3 text-center text-muted small italic">Không tìm thấy kết quả</div>
+                                )}
+                              </div>
+                            </div>
+                          )}
                         </div>
-                        <div className="col-12 col-md-6">
-                        <label className="form-label mb-1 text-uppercase fw-bold text-secondary opacity-75" style={{ fontSize: '10px' }}>Nguyên Liệu</label>
-                          <select
-                            className="form-select form-select-sm fw-bold border-primary-subtle"
-                            value={line.ingredient_id}
-                            onChange={e => setLines(prev => prev.map(l =>
-                              l.id === line.id ? { ...l, ingredient_id: e.target.value, unit_name: 'base' } : l
-                            ))}
-                          >
-                            <option value="">-- Chọn nguyên liệu --</option>
-                            {filteredIngredients.map((i: any) => (
-                              <option key={i.id} value={i.id}>{i.name}</option>
-                            ))}
-                          </select>
-                        </div>
-                        <div className="col-8 col-md-6">
+
+                        <div className="col-4 col-md-2">
                           <label className="form-label mb-1 text-uppercase fw-bold text-secondary opacity-75" style={{ fontSize: '10px' }}>Số Lượng</label>
                           <input
                             type="number" step="0.000001" min="0"
-                            className="form-control text-end fw-black text-primary"
+                            className="form-control form-control-sm text-end fw-black text-primary"
                             value={line.quantity}
                             onChange={e => setLines(prev => prev.map(l =>
                               l.id === line.id ? { ...l, quantity: e.target.value } : l
@@ -943,7 +977,7 @@ export default function Transactions() {
                             placeholder="0"
                           />
                         </div>
-                        <div className="col-4 col-md-6">
+                        <div className="col-4 col-md-2">
                           <label className="form-label mb-1 text-uppercase fw-bold text-secondary opacity-75" style={{ fontSize: '10px' }}>Quy Cách</label>
                           <select
                             className="form-select form-select-sm fw-bold text-secondary"
@@ -952,7 +986,7 @@ export default function Transactions() {
                               l.id === line.id ? { ...l, unit_name: e.target.value } : l
                             ))}
                           >
-                            <option value="base">{selectedIng?.unit || '...'}</option>
+                            <option value="base">{selectedIng?.unit || 'DVT'}</option>
                             {availableUnits.map(u => (
                               <option key={u.id} value={u.unit_name}>{u.unit_name} (x{u.conversion_factor})</option>
                             ))}

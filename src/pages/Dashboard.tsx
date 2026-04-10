@@ -48,81 +48,137 @@ export default function Dashboard() {
     fetchPurchasing();
   }, []);
 
-  if (loading) return <div className="p-8 text-center text-gray-500 italic">Đang tính toán danh sách SOS...</div>;
+  if (loading) return (
+    <div className="flex flex-col items-center justify-center p-20">
+      <div className="spinner-border text-teal-600 mb-3" role="status"></div>
+      <div className="text-gray-500 font-bold italic animate-pulse">Đang phân tích dữ liệu kho...</div>
+    </div>
+  );
+
+  const criticalCount = items.filter(i => i.current_stock < 0).length;
+  const warningCount = items.length - criticalCount;
 
   return (
-    <div className="container-fluid py-3 py-md-4">
-      <div className="row align-items-center mb-4 g-3">
+    <div className="container-fluid py-4 animate__animated animate__fadeIn">
+      {/* HEADER SECTION */}
+      <div className="row align-items-center mb-5 g-3">
         <div className="col-12 col-md-auto me-md-auto">
-          <h1 className="h3 fw-black text-dark mb-1 d-flex align-items-center gap-3">
-            <ShoppingCart className="text-primary" size={28} />
-            DANH SÁCH MẶT HÀNG SOS
-          </h1>
-          <p className="text-secondary small mb-0 font-medium">Gợi ý các mặt hàng SOS dựa trên định mức tồn kho tối thiểu.</p>
-        </div>
-        <div className="col-12 col-md-auto">
-          <div className="card border-0 shadow-sm rounded-pill bg-primary bg-opacity-10 px-3 py-2 border-start border-4 border-primary">
-            <div className="d-flex align-items-center gap-3">
-              <span className="small fw-bold text-primary text-uppercase tracking-wider">Cần nhập:</span>
-              <div className="d-flex align-items-center gap-2">
-                <span className="h4 fw-black text-primary mb-0">{items.length}</span>
-                <span className="small text-primary opacity-75">mặt hàng</span>
-              </div>
+          <div className="d-flex align-items-center gap-3">
+            <div className="bg-teal-600 p-3 rounded-2xl shadow-lg shadow-teal-100 ring-4 ring-teal-50">
+              <ShoppingCart className="text-white" size={28} />
+            </div>
+            <div>
+              <h1 className="h3 fw-black text-gray-800 mb-0 tracking-tight">DANH SÁCH MẶT HÀNG SOS</h1>
+              <p className="text-gray-400 small mb-0 font-bold uppercase tracking-widest mt-1">Hệ thống phân tích định mức tồn tối thiểu</p>
             </div>
           </div>
         </div>
       </div>
 
+      {/* OVERVIEW CARDS */}
+      <div className="row g-4 mb-5">
+        <div className="col-12 col-sm-6 col-xl-3">
+          <div className="card border-0 shadow-sm rounded-4 p-4 h-100 border-start border-5 border-teal-500">
+            <p className="text-gray-400 small font-black uppercase tracking-widest mb-1">Tổng mặt hàng</p>
+            <div className="d-flex align-items-end gap-2">
+              <h2 className="fw-black text-gray-800 mb-0">--</h2>
+              <span className="text-teal-600 font-bold pb-1">món</span>
+            </div>
+            <div className="mt-3 small text-gray-400 font-bold">Ghi nhận trong kho</div>
+          </div>
+        </div>
+        <div className="col-12 col-sm-6 col-xl-3">
+          <div className="card border-0 shadow-sm rounded-4 p-4 h-100 border-start border-5 border-warning">
+            <p className="text-warning small font-black uppercase tracking-widest mb-1">Sắp hết hàng</p>
+            <div className="d-flex align-items-end gap-2">
+              <h2 className="fw-black text-warning mb-0">{warningCount}</h2>
+              <span className="text-warning font-bold pb-1">món</span>
+            </div>
+            <div className="mt-3 small text-gray-400 font-bold">Cần nhập bổ sung sớm</div>
+          </div>
+        </div>
+        <div className="col-12 col-sm-6 col-xl-3">
+          <div className="card border-0 shadow-sm rounded-4 p-4 h-100 border-start border-5 border-danger">
+            <p className="text-danger small font-black uppercase tracking-widest mb-1">Hụt kho âm</p>
+            <div className="d-flex align-items-end gap-2">
+              <h2 className="fw-black text-danger mb-0">{criticalCount}</h2>
+              <span className="text-danger font-bold pb-1">loại</span>
+            </div>
+            <div className="mt-3 small text-gray-400 font-bold">CẢNH BÁO NGUY CẤP</div>
+          </div>
+        </div>
+        <div className="col-12 col-sm-6 col-xl-3">
+          <div className="card border-0 shadow-sm rounded-4 p-4 h-100 border-start border-5 border-info">
+            <p className="text-info small font-black uppercase tracking-widest mb-1">Trình trạng</p>
+            <div className="d-flex align-items-end gap-2">
+              <h2 className="fw-black text-info mb-0">{items.length === 0 ? 'AN TOÀN' : 'CẦN NHẬP'}</h2>
+            </div>
+            <div className="mt-3 small text-gray-400 font-bold">Dựa trên data kiểm kê gần nhất</div>
+          </div>
+        </div>
+      </div>
+
       {items.length === 0 ? (
-        <div className="card border-0 shadow-sm rounded-4 text-center py-5">
+        <div className="card border-0 shadow-sm rounded-4 text-center py-5 bg-white">
           <div className="card-body">
-            <div className="bg-success bg-opacity-10 text-success rounded-circle d-inline-flex align-items-center justify-content-center mb-4 shadow-sm" style={{ width: '64px', height: '64px' }}>
+            <div className="bg-success bg-opacity-10 text-success rounded-3 d-inline-flex align-items-center justify-content-center mb-4 shadow-sm" style={{ width: '64px', height: '64px' }}>
               <CheckCircle size={32} />
             </div>
-            <h4 className="fw-bold text-dark">Kho hàng an toàn!</h4>
-            <p className="text-secondary mb-0">Tất cả nguyên liệu đều đang ở mức an toàn (trên định mức).</p>
+            <h4 className="fw-black text-gray-800">Kho hàng an toàn!</h4>
+            <p className="text-gray-400 font-bold mb-0">Tất cả nguyên liệu đều đang ở mức an toàn (trên định mức).</p>
           </div>
         </div>
       ) : (
-        <div className="card border-0 shadow-sm rounded-4 overflow-hidden mb-4">
+        <div className="card border-0 shadow-sm rounded-4 overflow-hidden mb-4 bg-white">
+          <div className="p-4 border-b border-gray-50 flex justify-between items-center bg-gray-50/30">
+             <h5 className="mb-0 fw-black text-gray-700 small tracking-widest uppercase">Danh sách chi tiết cần nhập</h5>
+             <span className="badge bg-teal-600 rounded-pill px-3 py-2 font-black">{items.length} mặt hàng</span>
+          </div>
+          
           {/* Desktop View */}
           <div className="d-none d-md-block">
             <div className="table-responsive">
-              <table className="table table-hover align-middle mb-0" style={{ fontSize: '13px' }}>
-                <thead className="table-light">
-                  <tr>
-                    <th className="px-4 py-3 text-secondary text-uppercase small fw-black tracking-widest border-0">Tên Nguyên Liệu</th>
-                    <th className="px-4 py-3 text-center text-secondary text-uppercase small fw-black tracking-widest border-0">Tồn Hiện Tại</th>
-                    <th className="px-4 py-3 text-center text-secondary text-uppercase small fw-black tracking-widest border-0">Định Mức (Min)</th>
-                    <th className="px-4 py-3 text-end text-primary text-uppercase small fw-black tracking-widest border-0">Cần Nhập Thêm</th>
+              <table className="table table-hover align-middle mb-0">
+                <thead>
+                  <tr className="bg-gray-50/50">
+                    <th className="px-4 py-4 text-gray-400 text-uppercase text-[10px] font-black tracking-[0.2em] border-0">Nguyên Liệu</th>
+                    <th className="px-4 py-4 text-center text-gray-400 text-uppercase text-[10px] font-black tracking-[0.2em] border-0">Tồn Hiện Tại</th>
+                    <th className="px-4 py-4 text-center text-gray-400 text-uppercase text-[10px] font-black tracking-[0.2em] border-0">Định Mức (Min)</th>
+                    <th className="px-4 py-4 text-end text-teal-600 text-uppercase text-[10px] font-black tracking-[0.2em] border-0">Cần Nhập Thêm</th>
                   </tr>
                 </thead>
                 <tbody className="border-top-0">
                   {items.map((item) => (
-                    <tr key={item.id} className={item.current_stock < 0 ? 'table-danger-subtle' : ''}>
-                      <td className="px-4 py-3">
+                    <tr key={item.id} className="group transition-all">
+                      <td className="px-4 py-4 border-gray-50">
                         <div className="d-flex align-items-center gap-3">
-                          <div className={`p-2 rounded-3 shadow-sm ${item.current_stock < 0 ? 'bg-danger text-white' : 'bg-warning text-dark'}`}>
+                          <div className={`p-2.5 rounded-xl shadow-sm transition-all ${item.current_stock < 0 ? 'bg-danger text-white' : 'bg-warning text-dark'}`}>
                             {item.current_stock < 0 ? <AlertTriangle size={18} /> : <TrendingDown size={18} />}
                           </div>
                           <div>
-                            <p className="fw-bold text-dark mb-0">{item.name}</p>
-                            <p className="text-secondary mb-0" style={{ fontSize: '10px' }}>{item.current_stock < 0 ? 'HỤT KHO NGHIÊM TRỌNG' : 'DƯỚI MỨC AN TOÀN'}</p>
+                            <p className="fw-black text-gray-800 mb-0 tracking-tight">{item.name}</p>
+                            <div className="flex items-center gap-2 mt-0.5">
+                               <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded ${item.current_stock < 0 ? 'bg-danger/10 text-danger' : 'bg-warning/10 text-warning-emphasis'}`}>
+                                  {item.current_stock < 0 ? 'Hụt kho âm' : 'Dưới định mức'}
+                               </span>
+                            </div>
                           </div>
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-center font-monospace fw-bold">
-                        <span className={item.current_stock < 0 ? 'text-danger' : 'text-dark'}>
+                      <td className="px-4 py-4 text-center border-gray-50">
+                        <span className={`text-sm font-black ${item.current_stock < 0 ? 'text-danger' : 'text-gray-700'}`}>
                           {item.current_stock}
                         </span>
-                        <small className="text-muted ms-1 fw-normal">{item.unit}</small>
+                        <span className="text-[10px] text-gray-400 font-bold ms-1 uppercase">{item.unit}</span>
                       </td>
-                      <td className="px-4 py-3 text-center text-muted">
-                        {item.min_stock} <small>{item.unit}</small>
+                      <td className="px-4 py-4 text-center text-gray-500 border-gray-50">
+                        <span className="text-sm font-bold">{item.min_stock}</span>
+                        <span className="text-[10px] text-gray-400 font-bold ms-1 uppercase">{item.unit}</span>
                       </td>
-                      <td className="px-4 py-3 text-end">
-                        <div className="btn btn-primary rounded-pill fw-black shadow-sm px-4 py-1" style={{ fontSize: '12px' }}>
-                          +{item.needed.toFixed(2)} <small>{item.unit}</small>
+                      <td className="px-4 py-4 text-end border-gray-50">
+                        <div className="inline-flex items-center bg-teal-50 text-teal-700 rounded-xl px-4 py-2 border border-teal-100">
+                           <span className="text-sm font-black">+{item.needed.toFixed(2)}</span>
+                           <span className="text-[10px] font-bold ms-1 uppercase">{item.unit}</span>
                         </div>
                       </td>
                     </tr>
@@ -133,50 +189,43 @@ export default function Dashboard() {
           </div>
 
           {/* Mobile View */}
-          <div className="d-md-none list-group list-group-flush">
+          <div className="d-md-none space-y-4 p-3 bg-gray-50/20">
             {items.map((item) => (
-              <div key={item.id} className={`list-group-item p-4 border-bottom ${item.current_stock < 0 ? 'bg-danger-subtle' : ''}`}>
-                <div className="d-flex justify-content-between align-items-start mb-3">
-                  <div className="d-flex align-items-center gap-2">
-                    <div className={`p-2 rounded-3 shadow-sm ${item.current_stock < 0 ? 'bg-danger text-white' : 'bg-warning text-dark'}`}>
-                      {item.current_stock < 0 ? <AlertTriangle size={16} /> : <TrendingDown size={16} />}
+              <div key={item.id} className="bg-white rounded-4 p-4 shadow-sm border border-gray-100">
+                <div className="flex justify-between items-start mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2 rounded-xl ${item.current_stock < 0 ? 'bg-danger text-white' : 'bg-warning text-dark'}`}>
+                       {item.current_stock < 0 ? <AlertTriangle size={18} /> : <TrendingDown size={18} />}
                     </div>
                     <div>
-                      <h6 className="fw-bold text-dark mb-0">{item.name}</h6>
-                      <small className="text-muted text-uppercase fw-bold" style={{ fontSize: '9px' }}>{item.current_stock < 0 ? 'Hụt kho' : 'Sắp hết'}</small>
+                      <h4 className="text-sm font-black text-gray-800 mb-0">{item.name}</h4>
+                      <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">{item.current_stock < 0 ? 'Hụt kho âm' : 'Dưới định mức'}</span>
                     </div>
                   </div>
-                  <div className="badge rounded-pill bg-primary p-2 px-3 shadow-sm fw-black" style={{ fontSize: '12px' }}>
-                    +{item.needed.toFixed(2)} {item.unit}
+                  <div className="bg-teal-600 text-white rounded-lg px-2 py-1 flex flex-col items-center">
+                     <span className="text-[8px] font-black opacity-70 uppercase tracking-tighter">Cần nhập</span>
+                     <span className="text-xs font-black">+{item.needed.toFixed(2)}</span>
                   </div>
                 </div>
                 
-                <div className="row g-2">
-                  <div className="col-6">
-                    <div className="p-2 border rounded-3 bg-white">
-                      <p className="small text-muted text-uppercase fw-bold mb-1" style={{ fontSize: '9px' }}>Tồn Hiện Tại</p>
-                      <span className={`h6 fw-black mb-0 ${item.current_stock < 0 ? 'text-danger' : 'text-dark'}`}>
-                        {item.current_stock}
-                      </span>
-                      <small className="text-muted ms-1 font-monospace">{item.unit}</small>
-                    </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-gray-50/50 p-2 rounded-xl text-center">
+                    <p className="text-[8px] font-black text-gray-400 uppercase mb-1">Tồn hiện tại</p>
+                    <p className={`text-sm font-black mb-0 ${item.current_stock < 0 ? 'text-danger' : 'text-gray-700'}`}>{item.current_stock}</p>
                   </div>
-                  <div className="col-6">
-                    <div className="p-2 border rounded-3 bg-white">
-                      <p className="small text-muted text-uppercase fw-bold mb-1" style={{ fontSize: '9px' }}>Định Mức</p>
-                      <span className="h6 fw-bold text-secondary mb-0">
-                        {item.min_stock}
-                      </span>
-                      <small className="text-muted ms-1 font-monospace">{item.unit}</small>
-                    </div>
+                  <div className="bg-gray-50/50 p-2 rounded-xl text-center">
+                    <p className="text-[8px] font-black text-gray-400 uppercase mb-1">Định mức</p>
+                    <p className="text-sm font-bold text-gray-600 mb-0">{item.min_stock}</p>
                   </div>
                 </div>
               </div>
             ))}
           </div>
 
-          <div className="card-footer bg-light text-center py-3 border-0">
-            <p className="small text-muted font-italic mb-0" style={{ fontSize: '11px' }}>* Số liệu được tính toán dựa trên định mức tồn kho tối thiểu.</p>
+          <div className="card-footer bg-gray-50/30 text-center py-4 border-0">
+            <p className="small text-gray-400 font-bold uppercase tracking-widest mb-0" style={{ fontSize: '9px' }}>
+               Phân tích dựa trên dữ liệu giao dịch & kiểm kê mới nhất
+            </p>
           </div>
         </div>
       )}

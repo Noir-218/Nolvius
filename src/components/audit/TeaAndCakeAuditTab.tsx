@@ -59,7 +59,7 @@ interface StatusCfg {
 const TEA_STATUS = (d: number | null): StatusCfg => {
   if (d === null) return { label: '—', Icon: Clock, chip: 'text-gray-400', cell: '' };
   if (d > 2) return { label: 'Ok', Icon: CheckCircle2, chip: 'text-emerald-700 font-bold', cell: '' };
-  if (d === 2) return { label: 'Test', Icon: FlaskConical, chip: 'text-sky-700 font-bold', cell: 'bg-sky-50' };
+  if (d === 2) return { label: 'Test', Icon: FlaskConical, chip: 'text-teal-700 font-bold', cell: 'bg-teal-50' };
   if (d === 1) return { label: 'AM/QC Test', Icon: AlertTriangle, chip: 'text-amber-700 font-bold', cell: 'bg-amber-50' };
   if (d === 0) return { label: 'Hủy - Hết hạn hôm nay', Icon: AlertCircle, chip: 'text-red-600 font-bold', cell: 'bg-red-100' };
   return { label: 'Hủy/Quá hạn', Icon: XCircle, chip: 'text-red-600 font-bold', cell: 'bg-red-100' };
@@ -252,7 +252,7 @@ export const TeaAndCakeAuditTab: React.FC<Props> = ({ selectedDate }) => {
       const startOfThisMonth = selectedDate.slice(0, 8) + '01';
       const { data: priorAudits } = await supabase
         .from('stock_audits')
-        .select('ingredient_id, actual_stock')
+        .select('ingredient_id, actual_stock, audit_date')
         .gte('audit_date', startOfThisMonth)
         .lt('audit_date', selectedDate)
         .order('audit_date', { ascending: false });
@@ -275,21 +275,39 @@ export const TeaAndCakeAuditTab: React.FC<Props> = ({ selectedDate }) => {
       const monthlyMap: Record<string, number> = {};
       if (monthlyData) monthlyData.forEach((m: any) => { monthlyMap[m.ingredient_id] = m.opening_stock ?? 0; });
 
-      // 2.4 Fetch transactions for theoretical
+      // 2.4 Fetch transactions for theoretical (Since last audit up to today)
       const { data: txData } = await supabase
         .from('stock_transactions')
-        .select('ingredient_id, type, quantity')
-        .eq('transaction_date', selectedDate)
+        .select('ingredient_id, type, quantity, transaction_date')
+        .gte('transaction_date', startOfThisMonth)
+        .lte('transaction_date', selectedDate)
         .in('ingredient_id', ingIds);
 
       const txSummary: Record<string, { in: number, out: number }> = {};
       if (txData) {
         txData.forEach((tx: any) => {
           if (!tx.ingredient_id) return;
-          if (!txSummary[tx.ingredient_id]) txSummary[tx.ingredient_id] = { in: 0, out: 0 };
-          const qty = Math.abs(Number(tx.quantity));
-          if (['IN', 'IN_TRANSFER'].includes(tx.type)) txSummary[tx.ingredient_id].in += qty;
-          else if (['OUT', 'WASTE', 'SALES_USAGE'].includes(tx.type)) txSummary[tx.ingredient_id].out += qty;
+
+          const priorAuditForIng = (priorAudits || []).find(a => a.ingredient_id === tx.ingredient_id);
+          const lastDate = priorAuditForIng ? priorAuditForIng.audit_date : null;
+
+          const isCurrentDay = tx.transaction_date === selectedDate;
+          let shouldAcc = false;
+
+          if (isCurrentDay) {
+            shouldAcc = true;
+          } else if (lastDate && tx.transaction_date > lastDate) {
+            shouldAcc = true;
+          } else if (!lastDate && tx.transaction_date < selectedDate) {
+            shouldAcc = true;
+          }
+
+          if (shouldAcc) {
+            if (!txSummary[tx.ingredient_id]) txSummary[tx.ingredient_id] = { in: 0, out: 0 };
+            const qty = Math.abs(Number(tx.quantity));
+            if (['IN', 'IN_TRANSFER'].includes(tx.type)) txSummary[tx.ingredient_id].in += qty;
+            else if (['OUT', 'WASTE', 'SALES_USAGE'].includes(tx.type)) txSummary[tx.ingredient_id].out += qty;
+          }
         });
       }
 
@@ -456,7 +474,7 @@ export const TeaAndCakeAuditTab: React.FC<Props> = ({ selectedDate }) => {
                   return (
                     <tr 
                       key={`${group.ingredient_id}-${lotIdx}`} 
-                      className="group/row transition-colors hover:bg-blue-50/40"
+                      className="group/row transition-colors hover:bg-teal-50/40"
                     >
                       {/* Tên NVL */}
                       {isFirstRow && (
@@ -469,7 +487,7 @@ export const TeaAndCakeAuditTab: React.FC<Props> = ({ selectedDate }) => {
                               <div className="font-bold text-slate-800 text-[12px] leading-tight">{group.ingredient_name}</div>
                               <button
                                 onClick={() => addLot(group.ingredient_id)}
-                                className="mt-1 flex items-center gap-1 text-[10px] font-bold text-blue-600 hover:text-blue-800 hover:underline transition-all opacity-40 hover:opacity-100"
+                                className="mt-1 flex items-center gap-1 text-[10px] font-bold text-teal-600 hover:text-teal-800 hover:underline transition-all opacity-40 hover:opacity-100"
                               >
                                 <Plus size={10} /> Thêm lô
                               </button>
@@ -489,7 +507,7 @@ export const TeaAndCakeAuditTab: React.FC<Props> = ({ selectedDate }) => {
                             min="0"
                             value={lot.quantity}
                             onChange={e => updateLot(group.ingredient_id, lotIdx, 'quantity', e.target.value === '' ? '' : Number(e.target.value))}
-                            className="w-full h-8 text-center bg-transparent border-0 focus:ring-1 focus:ring-blue-400 focus:bg-white rounded py-0 font-bold text-slate-800 text-sm outline-none leading-8"
+                            className="w-full h-8 text-center bg-transparent border-0 focus:ring-1 focus:ring-teal-400 focus:bg-white rounded py-0 font-bold text-slate-800 text-sm outline-none leading-8"
                             placeholder="0"
                           />
                         ) : null}
@@ -503,7 +521,7 @@ export const TeaAndCakeAuditTab: React.FC<Props> = ({ selectedDate }) => {
                             value={lot.manufacture_date}
                             max={today}
                             onChange={e => updateLot(group.ingredient_id, lotIdx, 'manufacture_date', e.target.value)}
-                            className="w-full h-8 bg-transparent border-0 focus:ring-1 focus:ring-blue-400 focus:bg-white rounded py-0 text-[11px] text-slate-600 font-medium outline-none text-center leading-8"
+                            className="w-full h-8 bg-transparent border-0 focus:ring-1 focus:ring-teal-400 focus:bg-white rounded py-0 text-[11px] text-slate-600 font-medium outline-none text-center leading-8"
                           />
                         ) : null}
                       </td>
@@ -560,7 +578,7 @@ export const TeaAndCakeAuditTab: React.FC<Props> = ({ selectedDate }) => {
         <div>
           <h2 className="text-xl font-black text-gray-900 tracking-tight">Kiểm Trà & Bánh</h2>
           <p className="text-gray-400 text-sm mt-0.5">
-            Ngày kiểm: <span className="font-bold text-blue-600">{format(parseISO(selectedDate), 'dd/MM/yyyy')}</span> · 
+            Ngày kiểm: <span className="font-bold text-teal-600">{format(parseISO(selectedDate), 'dd/MM/yyyy')}</span> · 
             Tự động load từ <span className="font-bold text-gray-600">"{CATEGORY_NAME}"</span>.
           </p>
         </div>
@@ -578,7 +596,7 @@ export const TeaAndCakeAuditTab: React.FC<Props> = ({ selectedDate }) => {
           <button
             onClick={handleSave}
             disabled={saving || loading}
-            className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl font-black text-xs shadow-lg hover:bg-blue-700 disabled:opacity-50 transition-all active:scale-95 whitespace-nowrap"
+            className="flex items-center justify-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-xl font-black text-xs shadow-lg hover:bg-teal-700 disabled:opacity-50 transition-all active:scale-95 whitespace-nowrap"
           >
             <Save size={16} />
             {saving ? 'Đang lưu...' : 'Lưu Kiểm'}
@@ -637,7 +655,7 @@ export const TeaAndCakeAuditTab: React.FC<Props> = ({ selectedDate }) => {
               <p className="font-bold text-gray-600 mb-1.5">🍵 Trà — NSX + 5 ngày</p>
               <ul className="space-y-1">
                 <li className="flex items-center gap-2"><CheckCircle2 size={12} className="text-emerald-500 shrink-0" /> Còn &gt; 2 ngày → <strong className="text-emerald-700">Ok</strong></li>
-                <li className="flex items-center gap-2"><FlaskConical size={12} className="text-sky-500 shrink-0" />    Còn 2 ngày → <strong className="text-sky-700">Test</strong></li>
+                <li className="flex items-center gap-2"><FlaskConical size={12} className="text-teal-500 shrink-0" />    Còn 2 ngày → <strong className="text-teal-700">Test</strong></li>
                 <li className="flex items-center gap-2"><AlertTriangle size={12} className="text-amber-500 shrink-0" />  Còn 1 ngày → <strong className="text-amber-700">AM/QC Test</strong></li>
                 <li className="flex items-center gap-2"><AlertCircle size={12} className="text-red-500 shrink-0" />     Còn 0 ngày → <strong className="text-red-600">Hủy - Hết hạn hôm nay</strong></li>
                 <li className="flex items-center gap-2"><XCircle size={12} className="text-red-500 shrink-0" />     Quá hạn → <strong className="text-red-600">Đã hết hạn/Hủy</strong></li>

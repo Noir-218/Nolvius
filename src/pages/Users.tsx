@@ -9,6 +9,7 @@ interface Profile {
   email: string;
   full_name: string | null;
   role: string | null;
+  avatar_url: string | null;
   created_at: string | null;
 }
 
@@ -20,6 +21,11 @@ export default function Users() {
   const [activeTab, setActiveTab] = useState<'users' | 'maintenance'>('users');
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [tempName, setTempName] = useState('');
+  
+  // Details Modal
+  const [selectedUser, setSelectedUser] = useState<Profile | null>(null);
+  const [isResetMode, setIsResetMode] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
   
   // Maintenance State
   const [startDate, setStartDate] = useState('');
@@ -153,6 +159,22 @@ export default function Users() {
     }
   };
 
+  const handleResetPassword = async (_userId: string) => {
+    if (!newPassword || newPassword.length < 6) {
+      alert('Mật khẩu phải ít nhất 6 ký tự!');
+      return;
+    }
+    
+    // In a real production app with Supabase, you'd call a service-role Edge Function
+    // Since we are on client-side, we can only update the CURRENT logged in user's password.
+    // For admin to change OTHERs, they'd usually go through Supabase Dashboard or an Admin API.
+    alert(`Thông báo bảo mật:
+Để đổi mật khẩu cho nhân viên [${selectedUser?.email}], Master vui lòng thực hiện trên Supabase Dashboard (Cài đặt Auth > Users) hoặc hướng dẫn nhân viên sử dụng tính năng "Quên mật khẩu".
+Hệ thống hiện tại không lưu mật khẩu ở dạng văn bản để bảo vệ an toàn cho nhân viên.`);
+    setIsResetMode(false);
+    setNewPassword('');
+  };
+
   const filteredProfiles = profiles.filter(p => 
     p.email?.toLowerCase().includes(search.toLowerCase()) || 
     p.full_name?.toLowerCase().includes(search.toLowerCase())
@@ -228,8 +250,12 @@ export default function Users() {
                         <tr key={p.id}>
                           <td className="px-4 py-3">
                             <div className="d-flex align-items-center gap-3">
-                              <div className="w-10 h-10 rounded-full bg-light text-primary d-flex align-items-center justify-content-center fw-bold border">
-                                {(p.full_name || p.email || 'U').charAt(0).toUpperCase()}
+                              <div className="w-10 h-10 rounded-full bg-light text-primary d-flex align-items-center justify-content-center fw-bold border overflow-hidden">
+                                {p.avatar_url ? (
+                                  <img src={p.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
+                                ) : (
+                                  (p.full_name || p.email || 'U').charAt(0).toUpperCase()
+                                )}
                               </div>
                               <div>
                                 {editingUserId === p.id ? (
@@ -253,7 +279,7 @@ export default function Users() {
                                     <div className="fw-bold text-dark">{p.full_name || 'Chưa đặt tên'}</div>
                                     <button 
                                       onClick={() => { setEditingUserId(p.id); setTempName(p.full_name || ''); }}
-                                      className="btn btn-link p-0 text-muted hover-text-blue"
+                                      className="btn btn-link p-0 text-muted hover-text-primary"
                                     >
                                       <Edit3 size={14} />
                                     </button>
@@ -292,13 +318,22 @@ export default function Users() {
                             </div>
                           </td>
                           <td className="px-4 py-3 text-end">
-                            <button 
-                              className="btn btn-outline-danger btn-sm rounded-circle p-2 border-0 hover-bg-danger-subtle"
-                              title="Vô hiệu hóa tài khoản"
-                              onClick={() => alert('Chức năng xóa người dùng yêu cầu thao tác trong Supabase Auth.')}
-                            >
-                              <UserX size={18} />
-                            </button>
+                            <div className="d-flex justify-content-end gap-2">
+                              <button 
+                                onClick={() => setSelectedUser(p)}
+                                className="btn btn-outline-primary btn-sm rounded-circle p-2 border-0 hover-bg-primary-subtle"
+                                title="Xem chi tiết"
+                              >
+                                <Database size={18} />
+                              </button>
+                              <button 
+                                className="btn btn-outline-danger btn-sm rounded-circle p-2 border-0 hover-bg-danger-subtle"
+                                title="Vô hiệu hóa tài khoản"
+                                onClick={() => alert('Chức năng xóa người dùng yêu cầu thao tác trong Supabase Auth Dashboard.')}
+                              >
+                                <UserX size={18} />
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))
@@ -306,6 +341,84 @@ export default function Users() {
                   </tbody>
                 </table>
               </div>
+
+              {/* DETAILS MODAL */}
+              {selectedUser && (
+                <div className="modal fade show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+                  <div className="modal-dialog modal-dialog-centered">
+                    <div className="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
+                      <div className="modal-header bg-dark text-white border-0 py-3">
+                        <h5 className="modal-title fw-black small text-uppercase tracking-widest">
+                          Thông tin chi tiết tài khoản
+                        </h5>
+                        <button type="button" className="btn-close btn-close-white" onClick={() => { setSelectedUser(null); setIsResetMode(false); }}></button>
+                      </div>
+                      <div className="modal-body p-4">
+                        <div className="text-center mb-4">
+                          <div className="w-16 h-16 rounded-full bg-primary bg-opacity-10 text-primary d-flex align-items-center justify-content-center fw-bold fs-3 mx-auto border border-primary border-opacity-25 mb-3 overflow-hidden">
+                            {selectedUser.avatar_url ? (
+                              <img src={selectedUser.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
+                            ) : (
+                              (selectedUser.full_name || selectedUser.email).charAt(0).toUpperCase()
+                            )}
+                          </div>
+                          <h5 className="fw-black text-dark mb-1">{selectedUser.full_name || 'Chưa đặt tên'}</h5>
+                          <div className={`badge rounded-pill px-3 py-1 ${
+                            selectedUser.role === 'master' ? 'bg-danger text-white' : 'bg-light text-secondary border'
+                          }`}>
+                            Quyền: {selectedUser.role || 'Staff'}
+                          </div>
+                        </div>
+
+                        <div className="space-y-3">
+                          <div className="p-3 bg-light rounded-3 border">
+                            <label className="small fw-black text-muted text-uppercase tracking-tighter d-block mb-1">Tên đăng nhập (Email)</label>
+                            <div className="fw-bold text-dark">{selectedUser.email}</div>
+                          </div>
+                          <div className="p-3 bg-light rounded-3 border">
+                            <label className="small fw-black text-muted text-uppercase tracking-tighter d-block mb-1">Mã định danh (User ID)</label>
+                            <code className="text-primary small" style={{ wordBreak: 'break-all' }}>{selectedUser.id}</code>
+                          </div>
+                          <div className="p-3 bg-light rounded-3 border">
+                            <label className="small fw-black text-muted text-uppercase tracking-tighter d-block mb-1">Ngày tham gia</label>
+                            <div className="fw-bold text-dark">{selectedUser.created_at ? new Date(selectedUser.created_at).toLocaleString('vi-VN') : '---'}</div>
+                          </div>
+
+                          <div className="p-3 bg-danger bg-opacity-10 rounded-3 border border-danger border-opacity-25">
+                            <label className="small fw-black text-danger text-uppercase tracking-tighter d-block mb-2">Quản lý Mật khẩu</label>
+                            {isResetMode ? (
+                              <div className="d-flex gap-2">
+                                <input 
+                                  type="text" 
+                                  placeholder="Nhập mật khẩu mới..." 
+                                  className="form-control form-control-sm"
+                                  value={newPassword}
+                                  onChange={e => setNewPassword(e.target.value)}
+                                />
+                                <button onClick={() => handleResetPassword(selectedUser.id)} className="btn btn-sm btn-danger px-3">Lưu</button>
+                                <button onClick={() => setIsResetMode(false)} className="btn btn-sm btn-light border px-2">Hủy</button>
+                              </div>
+                            ) : (
+                              <div className="d-flex align-items-center justify-content-between">
+                                <div className="text-muted font-monospace">**********</div>
+                                <button 
+                                  onClick={() => setIsResetMode(true)}
+                                  className="btn btn-sm btn-link text-danger fw-bold p-0 text-decoration-none"
+                                >
+                                  Cấp lại mật khẩu
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="modal-footer border-0 p-4 pt-0">
+                        <button type="button" className="btn btn-dark w-100 rounded-pill py-2 fw-bold" onClick={() => setSelectedUser(null)}>Đóng</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
               
               <div className="mt-4 p-3 bg-light rounded-4 border-start border-4 border-info">
                 <h6 className="fw-bold text-info flex align-items-center gap-2">

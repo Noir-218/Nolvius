@@ -13,6 +13,7 @@ import Analysis from './pages/Analysis';
 import Forecast from './pages/Forecast';
 import Expenses from './pages/Expenses';
 import Users from './pages/Users';
+import Profile from './pages/Profile';
 
 function App() {
   return (
@@ -34,6 +35,7 @@ function App() {
             <Route path="forecast" element={<Forecast />} />
             <Route path="expenses" element={<Expenses />} />
             <Route path="users" element={<Users />} />
+            <Route path="profile" element={<Profile />} />
           </Route>
           
           <Route path="*" element={<Navigate to="/" replace />} />

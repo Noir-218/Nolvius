@@ -34,7 +34,7 @@ const navItems = [
 ];
 
 const Layout = () => {
-  const { session, user, role, loading, signOut } = useAuth();
+  const { session, user, role, fullName, avatarUrl, loading, signOut } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -64,88 +64,127 @@ const Layout = () => {
   );
 
   return (
-    <div className="flex h-screen bg-gray-50 overflow-hidden font-sans">
+    <div className="flex h-screen bg-gray-50 overflow-hidden font-sans border-0">
+      {/* Global Style Override for underling and premium Feel */}
+      <style>{`
+        a { text-decoration: none !important; }
+        .nav-link { text-decoration: none !important; }
+        .premium-shadow { box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.02) !important; }
+        .active-nav-bg { background-color: #f0f9f9 !important; color: #0d9488 !important; }
+      `}</style>
+      
       {/* Mobile Sidebar Overlay */}
       {isMenuOpen && (
         <div
-          className="fixed inset-0 bg-gray-900/50 z-20 lg:hidden backdrop-blur-sm"
+          className="fixed inset-0 bg-gray-900/40 z-20 lg:hidden backdrop-blur-sm transition-opacity duration-300"
           onClick={() => setIsMenuOpen(false)}
         />
       )}
 
       {/* Sidebar */}
       <aside className={`
-        fixed lg:static inset-y-0 left-0 w-64 bg-white border-r border-gray-200 flex flex-col shadow-xl lg:shadow-sm z-30 transition-transform duration-300 ease-in-out
+        fixed lg:static inset-y-0 left-0 w-64 bg-white border-r border-gray-100 flex flex-col shadow-xl lg:shadow-none z-30 transition-transform duration-300 ease-in-out
         ${isMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
       `}>
-        <div className="h-16 flex items-center justify-between px-6 border-b border-gray-200 bg-blue-600">
-          <h1 className="text-lg font-bold text-white truncate">NVC ALL IN ONE</h1>
+        <div className="h-16 flex items-center justify-between px-6 border-b border-gray-100 bg-teal-800">
+          <div className="flex items-center gap-2">
+            <div className="bg-white/10 p-1.5 rounded-lg">
+              <Coffee size={20} className="text-white" />
+            </div>
+            <h1 className="text-sm font-black text-white tracking-widest uppercase truncate">NVC MANAGER</h1>
+          </div>
           <button
             onClick={() => setIsMenuOpen(false)}
-            className="lg:hidden text-white p-1 hover:bg-blue-700 rounded-md"
+            className="lg:hidden text-white/70 hover:text-white p-1"
           >
-            <X size={24} />
+            <X size={20} />
           </button>
         </div>
-        <nav className="flex-1 overflow-y-auto py-4">
-          <ul className="space-y-1 px-3">
+        
+        <nav className="flex-1 overflow-y-auto py-6 scrollbar-hide">
+          <p className="px-6 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-4">Danh mục chính</p>
+          <ul className="space-y-1 px-3 list-none">
             {filteredNavItems.map((item) => (
-              <li key={item.path}>
+              <li key={item.path} className="list-none">
                 <NavLink
                   to={item.path}
                   className={({ isActive }) =>
-                    `flex items-center space-x-3 px-3 py-2.5 rounded-lg transition-colors ${isActive
-                      ? 'bg-blue-50 text-blue-700 font-medium'
-                      : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                    `flex items-center space-x-3 px-4 py-3 rounded-xl transition-all no-underline group ${isActive
+                      ? 'active-nav-bg font-black'
+                      : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
                     }`
                   }
                 >
-                  <item.icon size={20} className="shrink-0" />
-                  <span className="truncate">{item.label}</span>
+                  <item.icon size={18} className={`shrink-0 transition-colors ${location.pathname === item.path ? 'text-teal-600' : 'text-gray-400 group-hover:text-gray-700'}`} />
+                  <span className="text-sm tracking-tight">{item.label}</span>
                 </NavLink>
               </li>
             ))}
           </ul>
         </nav>
-        <div className="p-4 border-t border-gray-200">
+
+        <div className="p-4 bg-gray-50/50 mt-auto border-t border-gray-100">
+          <NavLink
+            to="/profile"
+            className={({ isActive }) =>
+              `flex items-center space-x-3 px-4 py-3 rounded-xl transition-all no-underline mb-2 group ${isActive
+                ? 'active-nav-bg font-black'
+                : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900'
+              }`
+            }
+          >
+            <UsersIcon size={18} className="text-gray-400 group-hover:text-gray-700" />
+            <span className="text-sm tracking-tight">Hồ sơ của tôi</span>
+          </NavLink>
           <button
             onClick={handleLogout}
-            className="flex items-center space-x-3 px-3 py-2.5 w-full rounded-lg text-red-600 hover:bg-red-50 transition-colors"
+            className="flex items-center space-x-3 px-4 py-3 w-full rounded-xl text-red-600 hover:bg-red-50 transition-all border-0"
           >
-            <LogOut size={20} />
-            <span className="font-medium">Đăng xuất</span>
+            <LogOut size={18} />
+            <span className="text-sm font-bold">Đăng xuất</span>
           </button>
         </div>
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col h-screen overflow-hidden w-full">
+      <main className="flex-1 flex flex-col h-screen overflow-hidden w-full bg-[#FAFAFA]">
         {/* Header */}
-        <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-4 sm:px-6 shadow-sm z-10 transition-all duration-300">
+        <header className="h-16 bg-white border-b border-gray-100 flex items-center justify-between px-6 z-10">
           <div className="flex items-center gap-4">
             <button
               onClick={toggleMenu}
-              className="lg:hidden p-2 text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
-              aria-label="Toggle menu"
+              className="lg:hidden p-2 text-gray-400 hover:bg-gray-100 rounded-xl transition-colors"
             >
-              <Menu size={24} />
+              <Menu size={22} />
             </button>
-            <h2 className="text-lg sm:text-xl font-semibold text-gray-800 line-clamp-1">
-              {navItems.find(item => item.path === location.pathname)?.label || 'Quản Lý Kho'}
-            </h2>
+            <div>
+              <h2 className="text-lg font-black text-gray-800 tracking-tight">
+                {navItems.find(item => item.path === location.pathname)?.label || 'Quản Lý'}
+              </h2>
+              <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider -mt-1">Coffee Management System</p>
+            </div>
           </div>
 
-          <div className="flex items-center bg-gray-100 px-2 sm:px-3 py-1.5 rounded-full border border-gray-200">
-            <div className="w-6 h-6 rounded-full bg-blue-500 flex items-center justify-center text-white text-xs font-bold mr-2 uppercase">
-              {role?.charAt(0) || user?.email?.charAt(0).toUpperCase() || 'U'}
-            </div>
-            <div className="flex flex-col">
-              <span className="text-xs font-bold text-blue-700 uppercase leading-none mb-0.5" style={{ fontSize: '10px' }}>
-                {role || 'staff'}
-              </span>
-              <span className="text-sm font-medium text-gray-700 hidden xs:inline max-w-[100px] truncate leading-none">
-                {user?.email?.split('@')[0] || 'User'}
-              </span>
+          <div className="flex items-center gap-3">
+             <div 
+              onClick={() => navigate('/profile')}
+              className="flex items-center bg-gray-50 px-4 py-2 rounded-2xl border border-gray-100 hover:border-teal-200 hover:bg-teal-50/30 cursor-pointer transition-all premium-shadow"
+            >
+              <div className="flex flex-col text-right mr-3">
+                <span className="text-[9px] font-black text-teal-600 uppercase tracking-widest leading-none mb-1">
+                  XIN CHÀO!
+                </span>
+                <span className="text-xs font-black text-gray-800 hidden sm:inline max-w-[150px] truncate leading-none">
+                  {fullName || user?.email?.split('@')[0] || 'User'}
+                </span>
+              </div>
+              <div className="w-9 h-9 rounded-xl bg-teal-600 shadow-lg shadow-teal-200 flex items-center justify-center text-white text-sm font-black uppercase ring-2 ring-white overflow-hidden">
+                {avatarUrl ? (
+                  <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
+                ) : (
+                  (fullName || user?.email || 'U').charAt(0).toUpperCase()
+                )}
+              </div>
             </div>
           </div>
         </header>

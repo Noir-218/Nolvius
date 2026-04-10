@@ -49,7 +49,7 @@ const fmt = (n: number) => n % 1 === 0 ? String(n) : n.toFixed(2);
 
 const SOURCE_LABEL: Record<ConsumptionSource, { text: string; cls: string; tip: string }> = {
   sales: { text: 'Bán hàng', cls: 'bg-purple-100 text-purple-700 border-purple-200', tip: 'Tính từ SALES_USAGE + WASTE' },
-  audit_diff: { text: 'Chênh lệch KK', cls: 'bg-blue-100 text-blue-700 border-blue-200', tip: 'Tính từ chênh lệch tồn kho giữa các ngày kiểm kê' },
+  audit_diff: { text: 'Chênh lệch KK', cls: 'bg-teal-100 text-teal-700 border-teal-200', tip: 'Tính từ chênh lệch tồn kho giữa các ngày kiểm kê' },
   none: { text: 'Chưa có dữ liệu', cls: 'bg-gray-100 text-gray-400 border-gray-200', tip: 'Không có giao dịch và không có kiểm kê trong kỳ' },
 };
 

@@ -26,7 +26,7 @@ const PERIODS = [
 
 const SOURCE_COLOR: Record<ConsumptionSource, string> = {
   sales: '#8b5cf6',  // purple
-  audit_diff: '#3b82f6',  // blue
+  audit_diff: '#0d9488',  // teal-600
 };
 
 const SOURCE_LABEL: Record<ConsumptionSource, string> = {

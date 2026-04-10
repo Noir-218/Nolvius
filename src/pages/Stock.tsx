@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { Search, AlertTriangle, AlertCircle, CheckCircle2, ClipboardList, Calendar } from 'lucide-react';
+import { Search, AlertTriangle, AlertCircle, CheckCircle2, ClipboardList, Calendar, Archive } from 'lucide-react';
 import { format, parseISO, startOfMonth } from 'date-fns';
 
 interface IngredientRow {
@@ -199,135 +199,199 @@ const Stock = () => {
   const lowStock = audited.filter(r => (r.actual_stock ?? 0) > 0 && (r.actual_stock ?? 0) <= (r.min_stock ?? 0));
 
   return (
-    <div>
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Quản Lý Tồn Kho</h1>
-        <p className="text-gray-500 mt-1">
-          Tồn kho hiển thị từ <span className="font-medium text-blue-600">số liệu thực tế của phiếu kiểm kê gần nhất</span> cho mỗi nguyên liệu.
-        </p>
-      </div>
-
-      {/* Summary stats */}
-      <div className="grid grid-cols-3 gap-4 mb-6">
-        <div className="bg-green-50 border border-green-200 rounded-xl p-4">
-          <p className="text-xs text-green-600 font-medium">Đã kiểm kê</p>
-          <p className="text-2xl font-bold text-green-700">{audited.length} / {rows.length}</p>
-          <p className="text-xs text-green-500 mt-0.5">nguyên liệu</p>
-        </div>
-        <div className="bg-orange-50 border border-orange-200 rounded-xl p-4">
-          <p className="text-xs text-orange-600 font-medium">Sắp hết</p>
-          <p className="text-2xl font-bold text-orange-700">{lowStock.length}</p>
-          <p className="text-xs text-orange-500 mt-0.5">nguyên liệu dưới định mức</p>
-        </div>
-        <div className="bg-red-50 border border-red-200 rounded-xl p-4">
-          <p className="text-xs text-red-600 font-medium">Hết hàng</p>
-          <p className="text-2xl font-bold text-red-700">{outOfStock.length}</p>
-          <p className="text-xs text-red-500 mt-0.5">nguyên liệu cần nhập</p>
-        </div>
-      </div>
-
-      {/* Filters */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-4 border-b pb-4">
-        <div className="flex gap-4 w-full md:w-auto">
-          <div className="relative flex-1 md:w-64">
-            <input
-              type="text"
-              placeholder="Tìm kiếm nguyên liệu..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500"
-            />
-            <Search className="absolute left-3 top-2.5 text-gray-400" size={18} />
+    <div className="container-fluid py-4 pb-10 animate__animated animate__fadeIn">
+      {/* HEADER */}
+      <div className="mb-8">
+        <div className="flex items-center gap-4">
+          <div className="bg-teal-600 p-3 rounded-2xl shadow-lg shadow-teal-100 ring-4 ring-teal-50">
+            <Archive className="text-white" size={28} />
           </div>
-          <select
-            value={filterCategory}
-            onChange={(e) => setFilterCategory(e.target.value)}
-            className="border border-gray-300 rounded-lg px-4 py-2 focus:ring-blue-500 flex-1 md:w-48 bg-white"
-          >
-            <option value="">Tất cả danh mục</option>
-            {categories.map((c, idx) => <option key={idx} value={c}>{c}</option>)}
-          </select>
-          <select
-            value={filterOrderType}
-            onChange={(e) => setFilterOrderType(e.target.value)}
-            className="border border-gray-300 rounded-lg px-4 py-2 focus:ring-blue-500 flex-1 md:w-48 bg-white"
-          >
-            <option value="">Tất cả loại đơn</option>
-            {orderTypes.map(t => (
-              <option key={t.id} value={t.id}>{t.name}</option>
-            ))}
-          </select>
+          <div>
+            <h1 className="h3 fw-black text-gray-800 mb-0 tracking-tight text-uppercase">QUẢN LÝ TỒN KHO</h1>
+            <p className="text-gray-400 small mb-0 font-bold uppercase tracking-widest mt-1">
+              Số liệu hiển thị dựa trên <span className="text-teal-600">phiếu kiểm kê gần nhất</span>
+            </p>
+          </div>
         </div>
       </div>
 
-      {/* Table */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tên Nguyên Liệu</th>
-              <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Đơn Vị</th>
-              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Tồn Sổ Sách</th>
-              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Tồn Thực Tế</th>
-              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Hao Hụt (Tháng)</th>
-              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Định Mức</th>
-              <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Kiểm Kê Gần Nhất</th>
-              <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Trạng Thái</th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {loading ? (
-              <tr><td colSpan={8} className="px-6 py-8 text-center text-gray-400">Đang tải dữ liệu tồn kho...</td></tr>
-            ) : filtered.length === 0 ? (
-              <tr><td colSpan={8} className="px-6 py-8 text-center text-gray-400">Không có dữ liệu</td></tr>
-            ) : (
-              filtered.map((item) => {
-                const status = getStatus(item.actual_stock, item.min_stock);
-                const StatusIcon = status.icon;
-                const hasAudit = item.actual_stock !== null;
-                const v = item.monthly_variance;
-                const varianceColor = v < -0.001 ? 'text-red-600' : v > 0.001 ? 'text-blue-600' : 'text-gray-400';
+      {/* SUMMARY STATS */}
+      <div className="row g-4 mb-8">
+        <div className="col-12 col-md-4">
+          <div className="bg-white border-0 shadow-sm rounded-4 p-4 border-start border-5 border-teal-500 premium-shadow">
+            <div className="flex justify-between items-start">
+              <div>
+                <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest mb-1">Đã kiểm kê</p>
+                <div className="flex items-baseline gap-2">
+                   <h2 className="fw-black text-gray-800 mb-0">{audited.length}</h2>
+                   <span className="text-gray-400 font-bold">/ {rows.length} món</span>
+                </div>
+              </div>
+              <div className="bg-teal-50 p-2 rounded-xl text-teal-600">
+                <CheckCircle2 size={24} />
+              </div>
+            </div>
+            <div className="mt-3 w-full bg-gray-100 rounded-full h-1.5">
+               <div className="bg-teal-500 h-1.5 rounded-full" style={{ width: `${(audited.length/rows.length)*100}%` }}></div>
+            </div>
+          </div>
+        </div>
+        <div className="col-12 col-md-4">
+          <div className="bg-white border-0 shadow-sm rounded-4 p-4 border-start border-5 border-warning premium-shadow">
+            <div className="flex justify-between items-start">
+              <div>
+                <p className="text-[10px] text-warning-emphasis font-black uppercase tracking-widest mb-1">Cảnh báo sắp hết</p>
+                <div className="flex items-baseline gap-2">
+                   <h2 className="fw-black text-orange-600 mb-0">{lowStock.length}</h2>
+                   <span className="text-gray-400 font-bold">mặt hàng</span>
+                </div>
+              </div>
+              <div className="bg-orange-50 p-2 rounded-xl text-orange-600">
+                <AlertTriangle size={24} />
+              </div>
+            </div>
+            <p className="mt-2 mb-0 text-[10px] text-gray-400 font-bold uppercase">Ưu tiên nhập hàng sớm</p>
+          </div>
+        </div>
+        <div className="col-12 col-md-4">
+          <div className="bg-white border-0 shadow-sm rounded-4 p-4 border-start border-5 border-danger premium-shadow text-red-50">
+            <div className="flex justify-between items-start">
+              <div>
+                <p className="text-[10px] text-danger font-black uppercase tracking-widest mb-1">Hết hàng / Cháy kho</p>
+                <div className="flex items-baseline gap-2">
+                   <h2 className="fw-black text-danger mb-0">{outOfStock.length}</h2>
+                   <span className="text-gray-400 font-bold">mặt hàng</span>
+                </div>
+              </div>
+              <div className="bg-red-50 p-2 rounded-xl text-danger">
+                <AlertCircle size={24} />
+              </div>
+            </div>
+            <p className="mt-2 mb-0 text-[10px] text-gray-400 font-bold uppercase">Cần nhập kho ngay lập tức</p>
+          </div>
+        </div>
+      </div>
 
-                return (
-                  <tr key={item.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{item.name}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-500">{item.unit}</td>
-                    <td className="px-4 py-4 whitespace-nowrap text-right text-sm font-mono text-gray-500">
-                      {item.current_theoretical !== null ? item.current_theoretical.toLocaleString() : '-'}
-                    </td>
-                    <td className="px-4 py-4 whitespace-nowrap text-right">
-                      {hasAudit ? (
-                        <span className="text-base font-bold text-gray-900">{item.actual_stock?.toLocaleString()}</span>
-                      ) : (
-                        <span className="text-sm text-gray-400 italic">Chưa có</span>
-                      )}
-                    </td>
-                    <td className={`px-4 py-4 whitespace-nowrap text-right text-sm font-bold ${varianceColor}`}>
-                      {v > 0.001 ? '+' : ''}{v.toLocaleString()}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-gray-500">{item.min_stock ?? '-'}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-center text-xs text-gray-400">
-                      {item.audit_date ? (
-                        <span className="flex items-center justify-center gap-1">
-                          <Calendar size={13} />
-                          {format(parseISO(item.audit_date), 'dd/MM/yyyy')}
+      {/* FILTERS */}
+      <div className="bg-white rounded-4 p-4 mb-6 shadow-sm border border-gray-100">
+        <div className="row g-3 align-items-center">
+          <div className="col-12 col-lg-4">
+             <div className="relative">
+                <input
+                  type="text"
+                  placeholder="Tìm tên nguyên liệu..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="w-full pl-11 pr-4 py-3 bg-gray-50 border-0 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-teal-500/20 focus:bg-white transition-all outline-none"
+                />
+                <Search className="absolute left-4 top-3.5 text-gray-400" size={18} />
+             </div>
+          </div>
+          <div className="col-12 col-sm-6 col-lg-4">
+            <select
+              value={filterCategory}
+              onChange={(e) => setFilterCategory(e.target.value)}
+              className="form-select border-0 bg-gray-50 h-[46px] rounded-2xl text-sm font-bold px-4 focus:ring-2 focus:ring-teal-500/20"
+            >
+              <option value="">Tất cả danh mục</option>
+              {categories.map((c, idx) => <option key={idx} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <div className="col-12 col-sm-6 col-lg-4">
+            <select
+              value={filterOrderType}
+              onChange={(e) => setFilterOrderType(e.target.value)}
+              className="form-select border-0 bg-gray-50 h-[46px] rounded-2xl text-sm font-bold px-4 focus:ring-2 focus:ring-teal-500/20"
+            >
+              <option value="">Nguồn nhập (Loại đơn)</option>
+              {orderTypes.map(t => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* TABLE */}
+      <div className="bg-white rounded-4 shadow-sm border border-gray-100 overflow-hidden premium-shadow">
+        <div className="table-responsive">
+          <table className="table table-hover align-middle mb-0">
+            <thead>
+              <tr className="bg-gray-50/50">
+                <th className="px-6 py-4 text-gray-400 text-uppercase text-[10px] font-black tracking-widest border-0">Nguyên Liệu</th>
+                <th className="px-4 py-4 text-center text-gray-400 text-uppercase text-[10px] font-black tracking-widest border-0">Số Sách</th>
+                <th className="px-4 py-4 text-center text-gray-400 text-uppercase text-[10px] font-black tracking-widest border-0">Thực Tế</th>
+                <th className="px-4 py-4 text-center text-gray-400 text-uppercase text-[10px] font-black tracking-widest border-0">Hao Hụt</th>
+                <th className="px-4 py-4 text-center text-gray-400 text-uppercase text-[10px] font-black tracking-widest border-0">Kiểm kê</th>
+                <th className="px-6 py-4 text-center text-gray-400 text-uppercase text-[10px] font-black tracking-widest border-0">Trạng Thái</th>
+              </tr>
+            </thead>
+            <tbody className="border-0">
+              {loading ? (
+                <tr><td colSpan={6} className="px-6 py-20 text-center">
+                  <div className="spinner-border text-teal-500 mb-3"></div>
+                  <p className="text-gray-400 font-bold uppercase tracking-widest small">Đang đối soát dữ liệu...</p>
+                </td></tr>
+              ) : filtered.length === 0 ? (
+                <tr><td colSpan={6} className="px-6 py-20 text-center text-gray-400 font-bold">Không tìm thấy dữ liệu phù hợp</td></tr>
+              ) : (
+                filtered.map((item) => {
+                  const status = getStatus(item.actual_stock, item.min_stock);
+                  const StatusIcon = status.icon;
+                  const hasAudit = item.actual_stock !== null;
+                  const v = item.monthly_variance;
+                  const varianceColor = v < -0.001 ? 'bg-red-50 text-danger' : v > 0.001 ? 'bg-teal-50 text-teal-600' : 'bg-gray-50 text-gray-400';
+
+                  return (
+                    <tr key={item.id} className="group transition-all">
+                      <td className="px-6 py-4 border-gray-50">
+                        <p className="fw-black text-gray-800 mb-0 tracking-tight">{item.name}</p>
+                        <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{item.category_name || 'Không phân loại'}</p>
+                      </td>
+                      <td className="px-4 py-4 text-center border-gray-50">
+                        <span className="text-sm font-bold text-gray-500">
+                          {item.current_theoretical !== null ? item.current_theoretical.toLocaleString() : '--'}
                         </span>
-                      ) : (
-                        <span className="text-gray-300">-</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-center">
-                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${status.color}`}>
-                        <StatusIcon size={14} />
-                        {status.label}
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
+                        <small className="text-[9px] text-gray-400 font-black uppercase ms-1">{item.unit}</small>
+                      </td>
+                      <td className="px-4 py-4 text-center border-gray-50">
+                        {hasAudit ? (
+                          <div className="inline-flex flex-col">
+                            <span className="text-base font-black text-gray-900 leading-none">{item.actual_stock?.toLocaleString()}</span>
+                            <span className="text-[9px] text-gray-400 font-black uppercase mt-1">THỰC TẾ</span>
+                          </div>
+                        ) : (
+                          <span className="text-[10px] font-black text-gray-300 uppercase italic">N/A</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-4 text-center border-gray-50">
+                        <div className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-xl font-black text-xs ${varianceColor}`}>
+                           {v > 0.001 ? '+' : ''}{v.toLocaleString()}
+                        </div>
+                      </td>
+                      <td className="px-4 py-4 text-center border-gray-50">
+                         {item.audit_date ? (
+                            <div className="flex flex-col items-center">
+                               <Calendar size={14} className="text-gray-300 mb-1" />
+                               <span className="text-[10px] font-black text-gray-500">{format(parseISO(item.audit_date), 'dd/MM/yyyy')}</span>
+                            </div>
+                         ) : (
+                            <span className="text-gray-200">--</span>
+                         )}
+                      </td>
+                      <td className="px-6 py-4 text-center border-gray-50">
+                        <div className={`inline-flex items-center gap-2 px-3 py-2 rounded-2xl text-[10px] font-black uppercase tracking-widest ${status.color}`}>
+                          <StatusIcon size={14} />
+                          {status.label}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
