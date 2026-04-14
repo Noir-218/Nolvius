@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Tables, TablesInsert, TablesUpdate } from '../../types/database.types';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import {
@@ -109,7 +110,7 @@ export const TeaAndCakeAuditTab: React.FC<Props> = ({ selectedDate }) => {
 
   // ── Fetch ─────────────────────────────────────────────────────────────────────
 
-  const fetchData = async (date: string) => {
+  const fetchData = useCallback(async (date: string) => {
     setLoading(true);
     try {
       const { data: ingData } = await supabase
@@ -125,22 +126,22 @@ export const TeaAndCakeAuditTab: React.FC<Props> = ({ selectedDate }) => {
       }
 
       const { data: savedData } = await supabase
-        .from('tea_cake_audits' as any)
+        .from('tea_cake_audits')
         .select('*')
         .eq('audit_date', date)
         .order('created_at', { ascending: true });
 
       const ids: string[] = [];
 
-      const builtGroups: IngredientGroup[] = (ingData as any[]).map((ing: any) => {
+      const builtGroups: IngredientGroup[] = (ingData as unknown as { id: string; name: string; unit: string }[]).map((ing) => {
         const type = detectType(ing.name);
         const savedLots = savedData
-          ? (savedData as any[]).filter(r => r.ingredient_id === ing.id)
+          ? (savedData as Tables<'tea_cake_audits'>[]).filter(r => r.ingredient_id === ing.id)
           : [];
 
         let lots: AuditLot[];
         if (savedLots.length > 0) {
-          lots = savedLots.map((r: any) => {
+          lots = savedLots.map((r) => {
             if (r.id) ids.push(r.id);
             return {
               id: r.id,
@@ -164,9 +165,9 @@ export const TeaAndCakeAuditTab: React.FC<Props> = ({ selectedDate }) => {
       console.error(err);
     }
     setLoading(false);
-  };
+  }, []);
 
-  useEffect(() => { fetchData(selectedDate); }, [selectedDate]);
+  useEffect(() => { fetchData(selectedDate); }, [selectedDate, fetchData]);
 
   // ── Lot operations ────────────────────────────────────────────────────────────
 
@@ -186,7 +187,7 @@ export const TeaAndCakeAuditTab: React.FC<Props> = ({ selectedDate }) => {
     }));
   };
 
-  const updateLot = (ingId: string, lotIdx: number, field: keyof AuditLot, value: any) => {
+  const updateLot = (ingId: string, lotIdx: number, field: keyof AuditLot, value: string | number) => {
     setGroups(prev => prev.map(g => {
       if (g.ingredient_id !== ingId) return g;
       return {
@@ -194,7 +195,7 @@ export const TeaAndCakeAuditTab: React.FC<Props> = ({ selectedDate }) => {
         lots: g.lots.map((lot, i) => {
           if (i !== lotIdx) return lot;
           const updated = { ...lot, [field]: value };
-          if (field === 'manufacture_date') updated.expiry_date = calcExpiry(value, g.item_type);
+          if (field === 'manufacture_date') updated.expiry_date = calcExpiry(String(value), g.item_type);
           return updated;
         }),
       };
@@ -217,10 +218,10 @@ export const TeaAndCakeAuditTab: React.FC<Props> = ({ selectedDate }) => {
       // ── 1. Lưu vào tea_cake_audits ───────────────────────────────────────────
       // Xóa các bản ghi cũ của ngày này cho các ingredient đã chọn
       if (savedIds.length > 0) {
-        await supabase.from('tea_cake_audits' as any).delete().in('id', savedIds);
+        await supabase.from('tea_cake_audits').delete().in('id', savedIds);
       }
       
-      const { error: teaErr } = await supabase.from('tea_cake_audits' as any).insert(
+      const { error: teaErr } = await supabase.from('tea_cake_audits').insert(
         allLotsToSave.map(l => ({
           audit_date: selectedDate,
           item_type: l.item_type,
@@ -245,8 +246,8 @@ export const TeaAndCakeAuditTab: React.FC<Props> = ({ selectedDate }) => {
         .eq('audit_date', selectedDate)
         .in('ingredient_id', ingIds);
 
-      const existingMap: Record<string, any> = {};
-      if (existingAudits) existingAudits.forEach((a: any) => { existingMap[a.ingredient_id] = a; });
+      const existingMap: Record<string, Tables<'stock_audits'>> = {};
+      if (existingAudits) existingAudits.forEach((a) => { existingMap[a.ingredient_id!] = a; });
 
       // 2.2 Fetch prior stock (for opening calculation if not exists)
       const startOfThisMonth = selectedDate.slice(0, 8) + '01';
@@ -259,7 +260,7 @@ export const TeaAndCakeAuditTab: React.FC<Props> = ({ selectedDate }) => {
 
       const priorActualMap: Record<string, number> = {};
       if (priorAudits) {
-        priorAudits.forEach((a: any) => {
+        priorAudits.forEach((a) => {
           if (a.ingredient_id && priorActualMap[a.ingredient_id] === undefined) {
             priorActualMap[a.ingredient_id] = a.actual_stock ?? 0;
           }
@@ -273,7 +274,7 @@ export const TeaAndCakeAuditTab: React.FC<Props> = ({ selectedDate }) => {
         .eq('year_month', selectedDate.slice(0, 7));
       
       const monthlyMap: Record<string, number> = {};
-      if (monthlyData) monthlyData.forEach((m: any) => { monthlyMap[m.ingredient_id] = m.opening_stock ?? 0; });
+      if (monthlyData) monthlyData.forEach((m) => { monthlyMap[m.ingredient_id] = m.opening_stock ?? 0; });
 
       // 2.4 Fetch transactions for theoretical (Since last audit up to today)
       const { data: txData } = await supabase
@@ -285,7 +286,7 @@ export const TeaAndCakeAuditTab: React.FC<Props> = ({ selectedDate }) => {
 
       const txSummary: Record<string, { in: number, out: number }> = {};
       if (txData) {
-        txData.forEach((tx: any) => {
+        txData.forEach((tx) => {
           if (!tx.ingredient_id) return;
 
           const priorAuditForIng = (priorAudits || []).find(a => a.ingredient_id === tx.ingredient_id);
@@ -338,13 +339,13 @@ export const TeaAndCakeAuditTab: React.FC<Props> = ({ selectedDate }) => {
         const counter = existing?.stock_in_counter ?? 0;
         const actual = storeQty === null ? null : (storeQty + counter);
 
-        const record: any = {
+        const record: TablesUpdate<'stock_audits'> = {
           ingredient_id: g.ingredient_id,
           audit_date: selectedDate,
           stock_in_store: storeQty,
           stock_in_counter: counter,
-          actual_stock: actual ?? theoretical, // Tránh null actual_stock nếu bảng yêu cầu non-null
-          opening_stock: opening,
+          actual_stock: (actual ?? theoretical) as number, // Tránh null actual_stock nếu bảng yêu cầu non-null
+          opening_stock: opening as number,
           theoretical_stock: theoretical,
           notes: existing?.notes ?? '',
           audited_by: user?.id,
@@ -353,13 +354,14 @@ export const TeaAndCakeAuditTab: React.FC<Props> = ({ selectedDate }) => {
         return record;
       });
 
-      const { error: upsertErr } = await supabase.from('stock_audits').upsert(recordsToUpsert);
+      const { error: upsertErr } = await supabase.from('stock_audits').upsert(recordsToUpsert as TablesInsert<'stock_audits'>[]);
       if (upsertErr) throw upsertErr;
 
       alert('Đã lưu thành công! Cột Kho trong phiếu kiểm kê đã được cập nhật.');
       fetchData(selectedDate);
-    } catch (err: any) {
-      alert('Lỗi: ' + (err?.message ?? 'Không xác định'));
+    } catch (err) {
+      console.error(err);
+      alert('Lỗi: ' + ((err as Error)?.message ?? 'Không xác định'));
     }
     setSaving(false);
   };

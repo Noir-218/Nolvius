@@ -18,9 +18,6 @@ interface Expense {
 export default function Expenses() {
   const { user, role } = useAuth();
   
-  if (role !== 'master') {
-    return <Navigate to="/" replace />;
-  }
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -48,6 +45,10 @@ export default function Expenses() {
   };
 
   useEffect(() => { fetchExpenses(); }, [selectedDate]);
+
+  if (role !== 'master') {
+    return <Navigate to="/" replace />;
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

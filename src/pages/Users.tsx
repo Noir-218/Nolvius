@@ -33,13 +33,14 @@ export default function Users() {
   const [deleteOptions, setDeleteOptions] = useState({
     audits: true,
     transactions: true,
-    teaCake: true
+    teaCake: true,
+    monthlyOpening: false,
+    sales: false,
   });
+  const [startMonth, setStartMonth] = useState('');
+  const [endMonth, setEndMonth] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
   
-  if (currentUserRole !== 'master') {
-    return <Navigate to="/" replace />;
-  }
 
   const fetchProfiles = async () => {
     setLoading(true);
@@ -49,7 +50,7 @@ export default function Users() {
       .order('created_at', { ascending: false });
     
     if (!error && data) {
-      setProfiles(data);
+      setProfiles(data as unknown as Profile[]);
     }
     setLoading(false);
   };
@@ -57,6 +58,10 @@ export default function Users() {
   useEffect(() => {
     fetchProfiles();
   }, []);
+
+  if (currentUserRole !== 'master') {
+    return <Navigate to="/" replace />;
+  }
 
   const handleUpdateRole = async (userId: string, newRole: string) => {
     const { error } = await supabase
@@ -88,32 +93,47 @@ export default function Users() {
   };
 
   const handleDeleteData = async () => {
-    if (!startDate || !endDate) {
-      alert('Vui lòng chọn khoảng thời gian!');
-      return;
-    }
+    const needsDateRange = deleteOptions.audits || deleteOptions.transactions || deleteOptions.teaCake || deleteOptions.sales;
+    const needsMonthRange = deleteOptions.monthlyOpening;
 
-    const selectedTypes = [];
-    if (deleteOptions.audits) selectedTypes.push('Kiểm kê NVL');
-    if (deleteOptions.transactions) selectedTypes.push('Giao dịch kho');
-    if (deleteOptions.teaCake) selectedTypes.push('Kiểm kê Trà & Bánh');
-
-    if (selectedTypes.length === 0) {
+    if (!needsDateRange && !needsMonthRange) {
       alert('Vui lòng chọn ít nhất một loại dữ liệu để xóa!');
       return;
     }
+    if (needsDateRange && (!startDate || !endDate)) {
+      alert('Vui lòng chọn khoảng ngày cho dữ liệu kiểm kê / giao dịch!');
+      return;
+    }
+    if (needsMonthRange && (!startMonth || !endMonth)) {
+      alert('Vui lòng chọn khoảng tháng cần xóa Tồn đầu!');
+      return;
+    }
+    if (needsMonthRange && startMonth > endMonth) {
+      alert('Tháng bắt đầu không được lớn hơn tháng kết thúc!');
+      return;
+    }
 
-    const confirmMsg = `CẢNH BÁO NGUY HIỂM!\n\nBạn đang yêu cầu XÓA VĨNH VIỄN dữ liệu:\n- Loại: ${selectedTypes.join(', ')}\n- Từ ngày: ${startDate}\n- Đến ngày: ${endDate}\n\nHành động này KHÔNG THỂ HOÀN TÁC. Bạn có chắc chắn muốn tiếp tục?`;
-    
+    const selectedTypes: string[] = [];
+    if (deleteOptions.audits) selectedTypes.push('Kiểm kê NVL');
+    if (deleteOptions.transactions) selectedTypes.push('Giao dịch kho');
+    if (deleteOptions.teaCake) selectedTypes.push('Kiểm kê Trà & Bánh');
+    if (deleteOptions.monthlyOpening) selectedTypes.push(`Tồn đầu tháng (${startMonth} → ${endMonth})`);
+    if (deleteOptions.sales) selectedTypes.push('Dữ liệu bán hàng');
+
+    const rangeInfo = [
+      needsDateRange ? `- Ngày: ${startDate} → ${endDate}` : '',
+      needsMonthRange ? `- Tháng: ${startMonth} → ${endMonth}` : '',
+    ].filter(Boolean).join('\n');
+
+    const confirmMsg = `CẢNH BÁO NGUY HIỂM!\n\nBạn đang yêu cầu XÓA VĨNH VIỄN dữ liệu:\n- Loại: ${selectedTypes.join(', ')}\n${rangeInfo}\n\nHành động này KHÔNG THỂ HOÀN TÁC. Bạn có chắc chắn muốn tiếp tục?`;
+
     if (!window.confirm(confirmMsg)) return;
-    
-    // Final double check
-    if (!window.confirm('XÁC NHẬN LẦN CUỐI: Bạn thực sự muốn xóa toàn bộ dữ liệu đã chọn trong khoảng thời gian này?')) return;
+    if (!window.confirm('XÁC NHẬN LẦN CUỐI: Bạn thực sự muốn xóa toàn bộ dữ liệu đã chọn?')) return;
 
     setIsDeleting(true);
     try {
       let successCount = 0;
-      let errorMsgs = [];
+      const errorMsgs: string[] = [];
 
       if (deleteOptions.audits) {
         const { error } = await supabase
@@ -145,21 +165,57 @@ export default function Users() {
         else successCount++;
       }
 
+      if (deleteOptions.monthlyOpening) {
+        const { error } = await supabase
+          .from('monthly_opening_stock')
+          .delete()
+          .gte('year_month', startMonth)
+          .lte('year_month', endMonth);
+        if (error) errorMsgs.push('Lỗi xóa Tồn đầu tháng: ' + error.message);
+        else successCount++;
+      }
+
+      if (deleteOptions.sales) {
+        // 1. Delete from sales table
+        const { error: saleErr } = await supabase
+          .from('sales')
+          .delete()
+          .gte('sale_date', startDate)
+          .lte('sale_date', endDate);
+        
+        // 2. Delete from stock_transactions table (SALES_USAGE types only)
+        // If the user also chose to delete ALL transactions, this is redundant but safe.
+        const { error: txErr } = await supabase
+          .from('stock_transactions')
+          .delete()
+          .eq('type', 'SALES_USAGE')
+          .gte('transaction_date', startDate)
+          .lte('transaction_date', endDate);
+
+        if (saleErr || txErr) {
+          errorMsgs.push('Lỗi xóa dữ liệu bán hàng: ' + (saleErr?.message || txErr?.message));
+        } else {
+          successCount++;
+        }
+      }
+
       if (errorMsgs.length > 0) {
         alert('Có lỗi xảy ra:\n' + errorMsgs.join('\n'));
       } else if (successCount > 0) {
         alert('Đã xóa dữ liệu thành công!');
         setStartDate('');
         setEndDate('');
+        setStartMonth('');
+        setEndMonth('');
       }
-    } catch (err: any) {
-      alert('Lỗi hệ thống: ' + err.message);
+    } catch (err) {
+      alert('Lỗi hệ thống: ' + (err as Error).message);
     } finally {
       setIsDeleting(false);
     }
   };
 
-  const handleResetPassword = async (_userId: string) => {
+  const handleResetPassword = async () => {
     if (!newPassword || newPassword.length < 6) {
       alert('Mật khẩu phải ít nhất 6 ký tự!');
       return;
@@ -395,7 +451,7 @@ Hệ thống hiện tại không lưu mật khẩu ở dạng văn bản để b
                                   value={newPassword}
                                   onChange={e => setNewPassword(e.target.value)}
                                 />
-                                <button onClick={() => handleResetPassword(selectedUser.id)} className="btn btn-sm btn-danger px-3">Lưu</button>
+                                <button onClick={() => handleResetPassword()} className="btn btn-sm btn-danger px-3">Lưu</button>
                                 <button onClick={() => setIsResetMode(false)} className="btn btn-sm btn-light border px-2">Hủy</button>
                               </div>
                             ) : (
@@ -514,6 +570,71 @@ Hệ thống hiện tại không lưu mật khẩu ở dạng văn bản để b
                             Dữ liệu Kiểm kê Trà & Bánh
                           </label>
                           <div className="text-muted italic" style={{fontSize: '10px', marginLeft: '32px'}}>Bảng: tea_cake_audits</div>
+                        </div>
+
+                        {/* --- Tồn đầu tháng --- */}
+                        <div className={`p-3 bg-white rounded-3 border ${deleteOptions.monthlyOpening ? 'border-warning border-2' : ''}`}>
+                          <div className="form-check">
+                            <input 
+                              className="form-check-input ms-0 me-3" 
+                              type="checkbox" 
+                              id="optMonthlyOpening" 
+                              checked={deleteOptions.monthlyOpening} 
+                              onChange={e => setDeleteOptions(prev => ({...prev, monthlyOpening: e.target.checked}))} 
+                            />
+                            <label className="form-check-label fw-bold small text-dark mt-1" htmlFor="optMonthlyOpening">
+                              Tồn đầu tháng
+                            </label>
+                            <div className="text-muted italic" style={{fontSize: '10px', marginLeft: '32px'}}>Bảng: monthly_opening_stock</div>
+                          </div>
+
+                          {deleteOptions.monthlyOpening && (
+                            <div className="mt-3 pt-3 border-top">
+                              <div className="small fw-black text-warning-emphasis text-uppercase mb-2" style={{fontSize:'10px'}}>
+                                Khoảng tháng cần xóa (riêng biệt)
+                              </div>
+                              <div className="row g-2">
+                                <div className="col-6">
+                                  <input 
+                                    type="month" 
+                                    className="form-control form-control-sm border-warning" 
+                                    value={startMonth} 
+                                    onChange={e => setStartMonth(e.target.value)} 
+                                    placeholder="Từ tháng"
+                                  />
+                                  <div className="small text-muted mt-1" style={{fontSize:'10px'}}>Từ tháng</div>
+                                </div>
+                                <div className="col-6">
+                                  <input 
+                                    type="month" 
+                                    className="form-control form-control-sm border-warning" 
+                                    value={endMonth} 
+                                    onChange={e => setEndMonth(e.target.value)} 
+                                    min={startMonth || undefined}
+                                    placeholder="Đến tháng"
+                                  />
+                                  <div className="small text-muted mt-1" style={{fontSize:'10px'}}>Đến tháng</div>
+                                </div>
+                              </div>
+                              <div className="mt-2 p-2 bg-warning bg-opacity-10 rounded-2 small text-warning-emphasis" style={{fontSize:'11px'}}>
+                                ⚠️ Thao tác này sẽ xóa toàn bộ tồn đầu của các tháng trong khoảng đã chọn.
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="form-check p-3 bg-white rounded-3 border">
+                          <input 
+                            className="form-check-input ms-0 me-3" 
+                            type="checkbox" 
+                            id="optSales" 
+                            checked={deleteOptions.sales} 
+                            onChange={e => setDeleteOptions(prev => ({...prev, sales: e.target.checked}))} 
+                          />
+                          <label className="form-check-label fw-bold small text-dark mt-1" htmlFor="optSales">
+                            Dữ liệu bán hàng & Tiêu hao (Sales)
+                          </label>
+                          <div className="text-muted italic" style={{fontSize: '10px', marginLeft: '32px'}}>Bảng: sales & stock_transactions (SALES_USAGE)</div>
                         </div>
                       </div>
                     </div>

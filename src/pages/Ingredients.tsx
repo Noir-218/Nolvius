@@ -9,8 +9,9 @@ import { Package, FolderTree, Truck, ClipboardList } from 'lucide-react';
 
 const Ingredients = () => {
   const { role } = useAuth();
-  if (role === 'staff') return <Navigate to="/audit" replace />;
   const [activeTab, setActiveTab] = useState<'ingredients' | 'categories' | 'order-types' | 'suppliers'>('ingredients');
+
+  if (role === 'staff') return <Navigate to="/audit" replace />;
 
   const tabs = [
     { id: 'ingredients', label: 'Nguyên Liệu', icon: Package },

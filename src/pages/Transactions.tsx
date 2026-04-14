@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { Plus, Search, Trash2, Edit2, X, ChevronDown, ChevronRight, Eye } from 'lucide-react';
+import { Plus, Search, Trash2, Edit2, X, ChevronDown, ChevronRight, Eye, Copy } from 'lucide-react';
 import { Modal } from '../components/ui/Modal';
 import { format, startOfMonth, parseISO } from 'date-fns';
 import { useAuth } from '../contexts/AuthContext';
@@ -68,9 +68,6 @@ const emptyLine = (): LineItem => ({
 export default function Transactions() {
   const { user, role } = useAuth();
   
-  if (role === 'staff') {
-    return <Navigate to="/audit" replace />;
-  }
   const [activeTab, setActiveTab] = useState<'history' | 'branches'>('history');
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [ingredients, setIngredients] = useState<any[]>([]);
@@ -170,6 +167,10 @@ export default function Transactions() {
   };
 
   useEffect(() => { fetchData(); }, [filterDateFrom, filterDateTo, filterType, filterBranch, filterStatus]);
+
+  if (role === 'staff') {
+    return <Navigate to="/audit" replace />;
+  }
 
   const resetForm = () => {
     setEditingReferenceId(null);
@@ -345,6 +346,32 @@ export default function Transactions() {
     setIsModalOpen(true);
   };
 
+  const startDuplicate = (group: TransactionGroup) => {
+    // Tạo phiếu mới dựa trên phiếu cũ, nhưng:
+    // - Không có editingReferenceId (tạo mới, không sửa)
+    // - Ngày = hôm nay
+    // - Số lượng = 0
+    // - Trạng thái (FAST, Duyệt, Xuất DC) = false
+    // - Ghi chú = trống
+    setEditingReferenceId(null);
+    setTxType(group.type);
+    setTxDate(today);
+    setTxSupplier(group.items[0]?.supplier_id || '');
+    setTxBranch(group.items[0]?.branch_id || '');
+    setTxNotes('');
+    setTxIsFast(false);
+    setTxIsApproved(false);
+    setTxIsExported(false);
+    setLines(group.items.map(item => ({
+      id: crypto.randomUUID(),
+      ingredient_id: item.ingredient_id,
+      quantity: '0',
+      unit_name: 'base',
+      searchTerm: item.ingredients?.name || '',
+      isDropdownOpen: false
+    })));
+    setIsModalOpen(true);
+  };
   const toggleGroup = (id: string) => {
     setExpandedGroups(prev => 
       prev.includes(id) ? prev.filter(g => g !== id) : [...prev, id]
@@ -610,13 +637,23 @@ export default function Transactions() {
                               </td>
                               <td className="px-4 py-3 text-end" onClick={e => e.stopPropagation()}>
                                 <div className="d-flex justify-content-end gap-1">
-                                  <button onClick={() => toggleGroup(group.id)} className="btn btn-sm btn-outline-secondary border-0 rounded-circle p-2 hover-shadow">
+                                  <button onClick={() => toggleGroup(group.id)} className="btn btn-sm btn-outline-secondary border-0 rounded-circle p-2 hover-shadow" title="Xem chi tiết">
                                     <Eye size={16} />
                                   </button>
-                                  <button onClick={() => startEdit(group)} className="btn btn-sm btn-outline-primary border-0 rounded-circle p-2 hover-shadow">
+                                  <button onClick={() => startEdit(group)} className="btn btn-sm btn-outline-primary border-0 rounded-circle p-2 hover-shadow" title="Sửa phiếu">
                                     <Edit2 size={16} />
                                   </button>
-                                  <button onClick={() => handleDelete(group)} className="btn btn-sm btn-outline-danger border-0 rounded-circle p-2 hover-shadow">
+                                  {(group.type === 'IN' || group.type === 'WASTE') && (
+                                    <button
+                                      onClick={() => startDuplicate(group)}
+                                      className="btn btn-sm border-0 rounded-circle p-2 hover-shadow"
+                                      style={{ color: '#0d9488', backgroundColor: 'transparent' }}
+                                      title="Chép dữ liệu sang phiếu mới (số lượng = 0)"
+                                    >
+                                      <Copy size={16} />
+                                    </button>
+                                  )}
+                                  <button onClick={() => handleDelete(group)} className="btn btn-sm btn-outline-danger border-0 rounded-circle p-2 hover-shadow" title="Xóa phiếu">
                                     <Trash2 size={16} />
                                   </button>
                                 </div>

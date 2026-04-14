@@ -12,12 +12,12 @@ interface IngredientRow {
   // from latest audit
   stock_in_store: number | null;
   stock_in_counter: number | null;
-  actual_stock: number | null;
-  theoretical_stock: number | null;
+  actual_stock: number | null; // latest audit actual
+  theoretical_stock: number | null; // monthly true book stock
   audit_date: string | null;
   // calculated
   monthly_variance: number;
-  current_theoretical: number | null;
+  current_actual: number | null; // estimated current real stock (latest actual + changes since)
   order_type_id: string | null;
 }
 
@@ -40,6 +40,20 @@ const Stock = () => {
 
     const now = new Date();
     const monthStart = format(startOfMonth(now), 'yyyy-MM-dd');
+    const yearMonth = format(now, 'yyyy-MM');
+
+    // 0. Fetch monthly opening stock for book stock calculation
+    const { data: openingData } = await supabase
+      .from('monthly_opening_stock')
+      .select('ingredient_id, opening_stock')
+      .eq('year_month', yearMonth);
+    
+    const openingMap: Record<string, number> = {};
+    if (openingData) {
+      openingData.forEach(m => {
+        openingMap[m.ingredient_id] = m.opening_stock ?? 0;
+      });
+    }
 
     // 0. Fetch order types
     const { data: typesData } = await supabase
@@ -120,23 +134,25 @@ const Stock = () => {
       .gte('transaction_date', monthStart);
 
     const txSinceMap: Record<string, number> = {};
+    const totalTxMap: Record<string, number> = {};
+
     if (recentTx) {
       recentTx.forEach(tx => {
         const id = tx.ingredient_id;
-        if (!id) return; // Fix null index error
+        if (!id) return;
         
+        const qty = Number(tx.quantity);
+        const change = ['IN', 'IN_TRANSFER'].includes(tx.type) ? qty : -Math.abs(qty);
+        
+        // Cumulative total for the whole month (for Book Stock)
+        totalTxMap[id] = (totalTxMap[id] ?? 0) + change;
+
         const latestDate = latestAuditMap[id]?.audit_date;
         
-        // Only count transactions happening AFTER the latest audit date
-        // Note: If transaction_date === audit_date, it's already included in the audit's theoretical_stock
+        // Only count transactions happening AFTER the latest audit date (for Current Actual)
         if (latestDate && tx.transaction_date > latestDate) {
-          const qty = Number(tx.quantity);
-          const change = ['IN', 'IN_TRANSFER'].includes(tx.type) ? qty : -Math.abs(qty);
           txSinceMap[id] = (txSinceMap[id] ?? 0) + change;
         } else if (!latestDate) {
-          // If never audited, count everything from month start (theoretical starts at 0 or monthly opening)
-          const qty = Number(tx.quantity);
-          const change = ['IN', 'IN_TRANSFER'].includes(tx.type) ? qty : -Math.abs(qty);
           txSinceMap[id] = (txSinceMap[id] ?? 0) + change;
         }
       });
@@ -149,7 +165,12 @@ const Stock = () => {
       
       const latestActual = latest ? (latest.actual_stock ?? 0) : null;
       const changeSince = txSinceMap[ing.id] ?? 0;
+      const totalTxMonth = totalTxMap[ing.id] ?? 0;
+      const openStock = openingMap[ing.id] ?? 0;
       
+      const bookStock = openStock + totalTxMonth;
+      const currentActual = latestActual !== null ? latestActual + changeSince : null;
+
       return {
         id: ing.id,
         name: ing.name,
@@ -159,10 +180,10 @@ const Stock = () => {
         stock_in_store: latest ? latest.stock_in_store : null,
         stock_in_counter: latest ? latest.stock_in_counter : null,
         actual_stock: latestActual,
-        theoretical_stock: latest ? latest.theoretical_stock : null,
+        theoretical_stock: bookStock, // This is now the true monthly book stock
         audit_date: latest ? latest.audit_date : null,
         monthly_variance: stats ? stats.cumulative_variance : 0,
-        current_theoretical: latestActual !== null ? latestActual + changeSince : null,
+        current_actual: currentActual,
         order_type_id: ing.order_type_id
       };
     });
@@ -195,8 +216,8 @@ const Stock = () => {
 
   // Stats
   const audited = rows.filter(r => r.actual_stock !== null);
-  const outOfStock = audited.filter(r => (r.actual_stock ?? 0) <= 0);
-  const lowStock = audited.filter(r => (r.actual_stock ?? 0) > 0 && (r.actual_stock ?? 0) <= (r.min_stock ?? 0));
+  const outOfStock = audited.filter(r => (r.current_actual ?? 0) <= 0);
+  const lowStock = audited.filter(r => (r.current_actual ?? 0) > 0 && (r.current_actual ?? 0) <= (r.min_stock ?? 0));
 
   return (
     <div className="container-fluid py-4 pb-10 animate__animated animate__fadeIn">
@@ -350,15 +371,15 @@ const Stock = () => {
                       </td>
                       <td className="px-4 py-4 text-center border-gray-50">
                         <span className="text-sm font-bold text-gray-500">
-                          {item.current_theoretical !== null ? item.current_theoretical.toLocaleString() : '--'}
+                          {item.theoretical_stock !== null ? item.theoretical_stock.toLocaleString() : '--'}
                         </span>
                         <small className="text-[9px] text-gray-400 font-black uppercase ms-1">{item.unit}</small>
                       </td>
                       <td className="px-4 py-4 text-center border-gray-50">
-                        {hasAudit ? (
+                        {item.current_actual !== null ? (
                           <div className="inline-flex flex-col">
-                            <span className="text-base font-black text-gray-900 leading-none">{item.actual_stock?.toLocaleString()}</span>
-                            <span className="text-[9px] text-gray-400 font-black uppercase mt-1">THỰC TẾ</span>
+                            <span className="text-base font-black text-gray-900 leading-none">{item.current_actual.toLocaleString()}</span>
+                            <span className="text-[9px] text-gray-400 font-black uppercase mt-1">HIỆN TẠI</span>
                           </div>
                         ) : (
                           <span className="text-[10px] font-black text-gray-300 uppercase italic">N/A</span>

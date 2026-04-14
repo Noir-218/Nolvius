@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { Upload, CheckCircle2, AlertCircle, Calendar, Trash2, Edit2, Save, X, RefreshCw, TrendingDown } from 'lucide-react';
 import * as xlsx from 'xlsx';
@@ -67,10 +67,10 @@ export default function Sales() {
         const wb = xlsx.read(bstr, { type: 'binary' });
 
         const cleanString = (str: string) =>
-          str.replace(/[\u200b\u200c\u200d\uFEFF\u00A0]/g, '').trim();
+          str.replace(/\u200b|\u200c|\u200d|\uFEFF|\u00A0/g, '').trim();
 
         const ws = wb.Sheets[wb.SheetNames[0]];
-        const rawRows: any[][] = xlsx.utils.sheet_to_json(ws, { header: 1 });
+        const rawRows = xlsx.utils.sheet_to_json(ws, { header: 1 }) as string[][];
 
         const headerKeywords = ['mã hàng', 'mã sản phẩm', 'mã sp', 'tên hàng', 'tên sản phẩm'];
         const headerRowIndex = rawRows.findIndex(row =>
@@ -106,7 +106,7 @@ export default function Sales() {
         const ingNameMap = new Map((dbIngredients || []).map(i => [cleanString(i.name.toLowerCase()), i.id]));
         const ingCodeMap = new Map((dbIngredients || []).map(i => [cleanString(i.id.toLowerCase()), i.id]));
 
-        let parsed: ParsedSale[] = dataRows.map((row: any[]) => {
+        const parsed: ParsedSale[] = dataRows.map((row) => {
           const rawCode = colCode >= 0 ? cleanString(String(row[colCode] ?? '')) : '';
           const rawName = colName >= 0 ? cleanString(String(row[colName] ?? '')) : '';
           const rawQty = colQty >= 0 ? row[colQty] : undefined;
@@ -169,10 +169,10 @@ export default function Sales() {
             if (visited.has(pid)) return; // Prevent infinite loops
             visited.add(pid);
 
-            const productRows = (allRecipes || []).filter(r => (r as any).product_id === pid);
-            if (productRows.length > 0) {
-              productRows.forEach(r => {
-                const row = r as any;
+            const productRows = (allRecipes || []) as unknown as { product_id: string; ingredient_id?: string; sub_product_id?: string; quantity: number }[];
+            const matches = productRows.filter(r => r.product_id === pid);
+            if (matches.length > 0) {
+              matches.forEach(row => {
                 if (row.ingredient_id) {
                   calcUsages[row.ingredient_id] = (calcUsages[row.ingredient_id] || 0) + (row.quantity * qty);
                 } else if (row.sub_product_id) {
@@ -232,6 +232,15 @@ export default function Sales() {
         await supabase.from('products').upsert(productUpserts);
       }
 
+      const uniqueDates = [...new Set(sales.map(s => s.sale_date))];
+      
+      // 1. Delete existing sales for these dates to prevent duplicates
+      for (const date of uniqueDates) {
+        const { error: delErr } = await supabase.from('sales').delete().eq('sale_date', date);
+        if (delErr) console.error(`Error clearing old sales for ${date}:`, delErr);
+      }
+
+      // 2. Insert new sales
       const salesInserts = sales.map(s => ({
         product_id: s.matched_product_id,
         quantity: s.quantity,
@@ -244,7 +253,7 @@ export default function Sales() {
         if (error) throw error;
       }
 
-      const uniqueDates = [...new Set(sales.map(s => s.sale_date))];
+      // 3. Sync stock transactions
       for (const date of uniqueDates) {
         await syncStockTransactions(date);
       }
@@ -282,10 +291,10 @@ export default function Sales() {
       if (visited.has(pid)) return;
       visited.add(pid);
 
-      const productRows = (allRecipes || []).filter(r => (r as any).product_id === pid);
-      if (productRows.length > 0) {
-        productRows.forEach(r => {
-          const row = r as any;
+      const productRows = (allRecipes || []) as unknown as { product_id: string; ingredient_id?: string; sub_product_id?: string; quantity: number }[];
+      const matches = productRows.filter(r => r.product_id === pid);
+      if (matches.length > 0) {
+        matches.forEach(row => {
           if (row.ingredient_id) {
             totalUsage[row.ingredient_id] = (totalUsage[row.ingredient_id] || 0) + (row.quantity * qty);
           } else if (row.sub_product_id) {
@@ -314,21 +323,27 @@ export default function Sales() {
     if (txInserts.length > 0) await supabase.from('stock_transactions').insert(txInserts);
   };
 
-  const fetchHistory = async (date?: string) => {
+  const fetchHistory = useCallback(async (date?: string) => {
     setLoadingHistory(true);
     const targetDate = date ?? filterDate;
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('sales')
       .select('*, products(name)')
       .eq('sale_date', targetDate)
-      .order('created_at', { ascending: false });
-    if (data) setHistory(data as any);
+      .order('imported_at', { ascending: false });
+    
+    if (error) {
+      console.error('Error fetching sales history:', error);
+      alert('Lỗi khi tải lịch sử bán hàng: ' + error.message);
+    } else {
+      setHistory(data as unknown as SaleRecord[]);
+    }
     setLoadingHistory(false);
-  };
+  }, [filterDate]);
 
   useEffect(() => {
     if (activeTab === 'history') fetchHistory();
-  }, [activeTab, filterDate]);
+  }, [activeTab, filterDate, fetchHistory]);
 
   const handleDeleteSale = async (id: string) => {
     const saleToDelete = history.find(s => s.id === id);

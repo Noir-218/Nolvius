@@ -16,9 +16,6 @@ interface PurchasingItem {
 export default function Dashboard() {
   const { role } = useAuth();
   
-  if (role === 'staff') {
-    return <Navigate to="/audit" replace />;
-  }
   const [items, setItems] = useState<PurchasingItem[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -47,6 +44,10 @@ export default function Dashboard() {
 
     fetchPurchasing();
   }, []);
+
+  if (role === 'staff') {
+    return <Navigate to="/audit" replace />;
+  }
 
   if (loading) return (
     <div className="flex flex-col items-center justify-center p-20">

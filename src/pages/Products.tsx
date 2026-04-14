@@ -7,7 +7,6 @@ import { useAuth } from '../contexts/AuthContext';
 
 const Products = () => {
   const { role } = useAuth();
-  if (role === 'staff') return <Navigate to="/audit" replace />;
   const location = useLocation();
   const [activeTab, setActiveTab] = useState<'products' | 'categories' | 'recipes'>(
     location.pathname.includes('recipes') ? 'recipes' : 'products'
@@ -20,6 +19,8 @@ const Products = () => {
       setActiveTab('products');
     }
   }, [location.pathname]);
+
+  if (role === 'staff') return <Navigate to="/audit" replace />;
 
   const tabs = [
     { id: 'products', label: 'Sản Phẩm' },

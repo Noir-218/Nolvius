@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Tables, TablesInsert, TablesUpdate } from '../types/database.types';
 import { supabase } from '../lib/supabase';
-import { Search, Save, History, PackageOpen, ChevronLeft, ChevronRight, AlertCircle, CupSoda, Upload, Download, ClipboardCheck } from 'lucide-react';
+import { Search, Save, History, PackageOpen, ChevronLeft, ChevronRight, AlertCircle, CupSoda, Upload, Download, ClipboardCheck, FileDown } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { TeaAndCakeAuditTab } from '../components/audit/TeaAndCakeAuditTab';
 import { useAuth } from '../contexts/AuthContext';
@@ -39,14 +40,12 @@ export default function Audit() {
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
   const [openingStockMap, setOpeningStockMap] = useState<Record<string, number>>({});
   const [dailyTx, setDailyTx] = useState<DailyTxSummary>({});
-  const [accumulatedTx, setAccumulatedTx] = useState<DailyTxSummary>({});
 
   const [storeStocks, setStoreStocks] = useState<Record<string, string>>({});
   const [counterStocks, setCounterStocks] = useState<Record<string, string>>({});
   const [storeUnits, setStoreUnits] = useState<Record<string, string>>({});
   const [counterUnits, setCounterUnits] = useState<Record<string, string>>({});
 
-  const [auditNotes, setAuditNotes] = useState<Record<string, string>>({});
   const [existingAuditIds, setExistingAuditIds] = useState<Record<string, string>>({});
   const existingAuditIdsRef = React.useRef<Record<string, string>>({});
 
@@ -55,10 +54,9 @@ export default function Audit() {
   const [monthlyOpeningNotes, setMonthlyOpeningNotes] = useState<Record<string, string>>({});
   const [existingMonthlyIds, setExistingMonthlyIds] = useState<Record<string, string>>({});
   const [hasMonthlyOpening, setHasMonthlyOpening] = useState(false);
-  const [allUnits, setAllUnits] = useState<any[]>([]);
+  const [allUnits, setAllUnits] = useState<Tables<'ingredient_units'>[]>([]);
 
-  const [auditHistory, setAuditHistory] = useState<any[]>([]);
-  const [dayAudits, setDayAudits] = useState<any[]>([]);
+  const [auditHistory, setAuditHistory] = useState<Tables<'stock_audits'>[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -66,13 +64,12 @@ export default function Audit() {
   const [selectedCategory, setSelectedCategory] = useState('');
   const [categories, setCategories] = useState<string[]>([]);
 
-  const fetchDailyData = async () => {
+  const fetchDailyData = useCallback(async () => {
     setLoading(true);
     setStoreStocks({});
     setCounterStocks({});
     setStoreUnits({});
     setCounterUnits({});
-    setAuditNotes({});
     setExistingAuditIds({});
     existingAuditIdsRef.current = {};
 
@@ -81,9 +78,9 @@ export default function Audit() {
       .select('id, name, unit, ingredient_categories(name)')
       .order('name');
     if (ingData) {
-      setIngredients(ingData as Ingredient[]);
+      setIngredients(ingData as unknown as Ingredient[]);
       const cats = Array.from(
-        new Set(ingData.map((i: any) => i.ingredient_categories?.name).filter(Boolean))
+        new Set(ingData.map((i) => (i.ingredient_categories as { name: string } | null)?.name).filter(Boolean))
       ) as string[];
       setCategories(cats);
     }
@@ -100,29 +97,23 @@ export default function Audit() {
     const counterMap: Record<string, string> = {};
     const sUnitMap: Record<string, string> = {};
     const cUnitMap: Record<string, string> = {};
-    const noteMap: Record<string, string> = {};
     const auditIdMap: Record<string, string> = {};
 
     if (dayAuditsData) {
-      setDayAudits(dayAuditsData);
-      dayAuditsData.forEach((a: any) => {
+      dayAuditsData.forEach((a) => {
         if (a.ingredient_id) {
           storeMap[a.ingredient_id] = a.stock_in_store?.toString() ?? '';
           counterMap[a.ingredient_id] = a.stock_in_counter?.toString() ?? '';
           sUnitMap[a.ingredient_id] = 'base';
           cUnitMap[a.ingredient_id] = 'base';
-          noteMap[a.ingredient_id] = a.notes ?? '';
           auditIdMap[a.ingredient_id] = a.id;
         }
       });
-    } else {
-      setDayAudits([]);
     }
     setStoreStocks(storeMap);
     setCounterStocks(counterMap);
     setStoreUnits(sUnitMap);
     setCounterUnits(cUnitMap);
-    setAuditNotes(noteMap);
     setExistingAuditIds(auditIdMap);
     existingAuditIdsRef.current = auditIdMap;
 
@@ -135,10 +126,12 @@ export default function Audit() {
       .order('audit_date', { ascending: false });
 
     const priorActualMap: Record<string, number> = {};
+    const priorDateMap: Record<string, string> = {};
     if (priorAudits) {
-      priorAudits.forEach((a: any) => {
+      priorAudits.forEach((a) => {
         if (a.ingredient_id && priorActualMap[a.ingredient_id] === undefined) {
           priorActualMap[a.ingredient_id] = a.actual_stock ?? 0;
+          priorDateMap[a.ingredient_id] = a.audit_date;
         }
       });
     }
@@ -150,21 +143,11 @@ export default function Audit() {
 
     const monthlyMap: Record<string, number> = {};
     if (monthlyData) {
-      monthlyData.forEach((m: any) => {
+      monthlyData.forEach((m) => {
         monthlyMap[m.ingredient_id] = m.opening_stock ?? 0;
       });
     }
     setHasMonthlyOpening(monthlyData ? monthlyData.length > 0 : false);
-
-    const computedOpening: Record<string, number> = {};
-    (ingData || []).forEach((ing: any) => {
-      if (!isFirstOfMonth && priorActualMap[ing.id] !== undefined) {
-        computedOpening[ing.id] = priorActualMap[ing.id];
-      } else {
-        computedOpening[ing.id] = monthlyMap[ing.id] ?? 0;
-      }
-    });
-    setOpeningStockMap(computedOpening);
 
     const { data: txData } = await supabase
       .from('stock_transactions')
@@ -173,12 +156,10 @@ export default function Audit() {
       .lte('transaction_date', selectedDate);
 
     const daySummary: DailyTxSummary = {};
-    const accSummary: DailyTxSummary = {};
+    const gapSummary: DailyTxSummary = {};
     if (txData) {
-      txData.forEach((tx: any) => {
+      txData.forEach((tx) => {
         if (!tx.ingredient_id) return;
-        const priorAuditForIng = (priorAudits || []).find(a => a.ingredient_id === tx.ingredient_id);
-        const lastDate = priorAuditForIng ? priorAuditForIng.audit_date : null;
         const qty = Math.abs(Number(tx.quantity));
         const isCurrentDay = tx.transaction_date === selectedDate;
 
@@ -186,35 +167,43 @@ export default function Audit() {
           if (!daySummary[tx.ingredient_id]) daySummary[tx.ingredient_id] = { in: 0, out: 0 };
           if (['IN', 'IN_TRANSFER'].includes(tx.type)) daySummary[tx.ingredient_id].in += qty;
           else if (['OUT', 'WASTE', 'SALES_USAGE'].includes(tx.type)) daySummary[tx.ingredient_id].out += qty;
-        }
-
-        let shouldAcc = false;
-        if (isCurrentDay) shouldAcc = true;
-        else if (lastDate && tx.transaction_date > lastDate) shouldAcc = true;
-        else if (!lastDate && tx.transaction_date < selectedDate) shouldAcc = true;
-
-        if (shouldAcc) {
-          if (!accSummary[tx.ingredient_id]) accSummary[tx.ingredient_id] = { in: 0, out: 0 };
-          if (['IN', 'IN_TRANSFER'].includes(tx.type)) accSummary[tx.ingredient_id].in += qty;
-          else if (['OUT', 'WASTE', 'SALES_USAGE'].includes(tx.type)) accSummary[tx.ingredient_id].out += qty;
+        } else {
+          const lastDate = priorDateMap[tx.ingredient_id] || (startOfThisMonth.slice(0, 8) + '00');
+          if (tx.transaction_date > lastDate && tx.transaction_date < selectedDate) {
+            if (!gapSummary[tx.ingredient_id]) gapSummary[tx.ingredient_id] = { in: 0, out: 0 };
+            if (['IN', 'IN_TRANSFER'].includes(tx.type)) gapSummary[tx.ingredient_id].in += qty;
+            else if (['OUT', 'WASTE', 'SALES_USAGE'].includes(tx.type)) gapSummary[tx.ingredient_id].out += qty;
+          }
         }
       });
     }
     setDailyTx(daySummary);
-    setAccumulatedTx(accSummary);
+
+    const computedOpening: Record<string, number> = {};
+    (ingData || []).forEach((ing) => {
+      let baseOpening = 0;
+      if (!isFirstOfMonth && priorActualMap[ing.id] !== undefined) {
+        baseOpening = priorActualMap[ing.id];
+      } else {
+        baseOpening = monthlyMap[ing.id] ?? 0;
+      }
+      const gapTx = gapSummary[ing.id] || { in: 0, out: 0 };
+      computedOpening[ing.id] = baseOpening + gapTx.in - gapTx.out;
+    });
+    setOpeningStockMap(computedOpening);
 
     setLoading(false);
-  };
+  }, [selectedDate, yearMonth, isFirstOfMonth]);
 
-  const fetchMonthlyOpening = async () => {
+  const fetchMonthlyOpening = useCallback(async () => {
     setLoading(true);
     const { data: ingData } = await supabase
       .from('ingredients')
       .select('id, name, unit, ingredient_categories(name)')
       .order('name');
     if (ingData) {
-      setIngredients(ingData as Ingredient[]);
-      const cats = Array.from(new Set(ingData.map((i: any) => i.ingredient_categories?.name).filter(Boolean))) as string[];
+      setIngredients(ingData as unknown as Ingredient[]);
+      const cats = Array.from(new Set(ingData.map((i) => (i.ingredient_categories as { name: string } | null)?.name).filter(Boolean))) as string[];
       setCategories(cats);
     }
     const { data: monthlyData } = await supabase
@@ -225,7 +214,7 @@ export default function Audit() {
     const noteMap: Record<string, string> = {};
     const idMap: Record<string, string> = {};
     if (monthlyData) {
-      monthlyData.forEach((m: any) => {
+      monthlyData.forEach((m) => {
         inputMap[m.ingredient_id] = m.opening_stock?.toString() ?? '';
         noteMap[m.ingredient_id] = m.notes ?? '';
         idMap[m.ingredient_id] = m.id;
@@ -237,9 +226,9 @@ export default function Audit() {
     const { data: unitsData } = await supabase.from('ingredient_units').select('*');
     if (unitsData) setAllUnits(unitsData);
     setLoading(false);
-  };
+  }, [yearMonth]);
 
-  const fetchHistory = async () => {
+  const fetchHistory = useCallback(async () => {
     setLoading(true);
     const { data } = await supabase
       .from('stock_audits')
@@ -247,15 +236,15 @@ export default function Audit() {
       .order('audit_date', { ascending: false })
       .order('created_at', { ascending: false })
       .limit(100);
-    if (data) setAuditHistory(data);
+    if (data) setAuditHistory(data as unknown as Tables<'stock_audits'>[]);
     setLoading(false);
-  };
+  }, []);
 
   useEffect(() => {
     if (viewMode === 'daily') fetchDailyData();
     else if (viewMode === 'opening') fetchMonthlyOpening();
     else if (viewMode === 'history') fetchHistory();
-  }, [viewMode, selectedDate]);
+  }, [viewMode, selectedDate, fetchDailyData, fetchHistory, fetchMonthlyOpening]);
 
   const handleExcelImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -267,11 +256,11 @@ export default function Audit() {
         const wb = XLSX.read(bstr, { type: 'binary' });
         const wsname = wb.SheetNames[0];
         const ws = wb.Sheets[wsname];
-        const data = XLSX.utils.sheet_to_json(ws) as any[];
+        const data = XLSX.utils.sheet_to_json(ws) as Record<string, string | number>[];
         const newStoreStocks = { ...storeStocks };
         const newCounterStocks = { ...counterStocks };
         let matchCount = 0;
-        data.forEach((row: any) => {
+        data.forEach((row) => {
           const id = row['Mã nguyên liệu'] || row['Ma nguyen lieu'] || row['ID'];
           const storeVal = row['Kho(số tồn kho)'] || row['Kho'] || row['Store'];
           const counterVal = row['Cửa hàng(số tồn bên ngoài quầy)'] || row['Cửa hàng'] || row['Counter'];
@@ -287,7 +276,10 @@ export default function Audit() {
         setStoreStocks(newStoreStocks);
         setCounterStocks(newCounterStocks);
         alert(`Đã nhập dữ liệu cho ${matchCount} nguyên liệu!`);
-      } catch (err) { alert('Lỗi Excel!'); }
+      } catch (err) { 
+        console.error(err);
+        alert('Lỗi Excel!'); 
+      }
       e.target.value = '';
     };
     reader.readAsBinaryString(file);
@@ -306,6 +298,55 @@ export default function Audit() {
     XLSX.writeFile(wb, `Template_Kiem_Ke.xlsx`);
   };
 
+  const exportDailyAudit = () => {
+    const dataToExport = filtered
+      .map(ing => {
+        const storeVal = storeStocks[ing.id] || '';
+        const counterVal = counterStocks[ing.id] || '';
+        
+        const storeIn = parseFloat(storeVal) || 0;
+        const sUnit = storeUnits[ing.id] || 'base';
+        let sFactor = 1;
+        if (sUnit !== 'base') {
+          const unit = allUnits.find(u => u.ingredient_id === ing.id && u.unit_name === sUnit);
+          if (unit) sFactor = unit.conversion_factor;
+        }
+        const store = storeIn * sFactor;
+
+        const counterIn = parseFloat(counterVal) || 0;
+        const cUnit = counterUnits[ing.id] || 'base';
+        let cFactor = 1;
+        if (cUnit !== 'base') {
+          const unit = allUnits.find(u => u.ingredient_id === ing.id && u.unit_name === cUnit);
+          if (unit) cFactor = unit.conversion_factor;
+        }
+        const counter = counterIn * cFactor;
+        
+        const total = store + counter;
+        const hasInput = storeVal !== '' || counterVal !== '';
+
+        if (!hasInput && !existingAuditIds[ing.id]) return null;
+
+        return {
+          'Mã hàng': ing.id,
+          'Tên hàng': ing.name,
+          'Đơn vị': ing.unit,
+          'Số lượng (tổng kho + quầy)': total
+        };
+      })
+      .filter(Boolean);
+
+    if (dataToExport.length === 0) {
+      alert('Không có dữ liệu kiểm kê để xuất!');
+      return;
+    }
+
+    const ws = XLSX.utils.json_to_sheet(dataToExport);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Dữ liệu kiểm kê");
+    XLSX.writeFile(wb, `Kiem_Ke_${selectedDate}.xlsx`);
+  };
+
   const handleSaveAudit = async () => {
     const filledKeys = Object.keys(storeStocks).concat(Object.keys(counterStocks))
       .filter((v, i, a) => a.indexOf(v) === i)
@@ -313,9 +354,25 @@ export default function Audit() {
     if (filledKeys.length === 0) { alert('Vui lòng nhập tồn!'); return; }
     setSaving(true);
     try {
+      // Auto-cleanup: Delete existing audits for these ingredients on this specific date
+      // to avoid duplicates and double-counting in variances.
+      const { error: delErr } = await supabase
+        .from('stock_audits')
+        .delete()
+        .eq('audit_date', selectedDate)
+        .in('ingredient_id', filledKeys);
+      
+      if (delErr) {
+        console.error('Error during auto-cleanup:', delErr);
+        if (!window.confirm('Không thể dọn dẹp dữ liệu cũ. Bạn có muốn tiếp tục lưu đè (có thể gây lặp số liệu)?')) {
+          setSaving(false);
+          return;
+        }
+      }
+
       const hugeVariances: string[] = [];
-      const toUpdate: any[] = [];
-      const toInsert: any[] = [];
+      const toUpdate: TablesUpdate<'stock_audits'>[] = [];
+      const toInsert: TablesInsert<'stock_audits'>[] = [];
       filledKeys.forEach(id => {
         const storeIn = parseFloat(storeStocks[id]) || 0;
         const sUnit = storeUnits[id] || 'base';
@@ -335,8 +392,8 @@ export default function Audit() {
         const counter = counterIn * cFactor;
         const actual = store + counter;
         const opening = openingStockMap[id] ?? 0;
-        const acc = accumulatedTx[id] || { in: 0, out: 0 };
-        const theoretical = opening + acc.in - acc.out;
+        const daily = dailyTx[id] || { in: 0, out: 0 };
+        const theoretical = opening + daily.in - daily.out;
         if (theoretical > 0 && Math.abs(actual - theoretical) > (theoretical * 0.2)) {
           hugeVariances.push(ingredients.find(i => i.id === id)?.name || id);
         }
@@ -348,7 +405,7 @@ export default function Audit() {
           stock_in_store: store,
           stock_in_counter: counter,
           actual_stock: actual,
-          notes: auditNotes[id] || '',
+          notes: '',
           audited_by: user?.id,
         };
         const existingId = existingAuditIdsRef.current[id];
@@ -358,11 +415,20 @@ export default function Audit() {
       if (hugeVariances.length > 0) {
         if (!window.confirm(`Phát hiện ${hugeVariances.length} chênh lệch > 20%. Tiếp tục?`)) { setSaving(false); return; }
       }
-      if (toUpdate.length > 0) await supabase.from('stock_audits').upsert(toUpdate);
-      if (toInsert.length > 0) await supabase.from('stock_audits').insert(toInsert);
+      
+      // All items prepared as toInsert (since we just deleted existing ones above)
+      const allToInsert = [...toUpdate, ...toInsert] as any[];
+      if (allToInsert.length > 0) {
+        const { error } = await supabase.from('stock_audits').insert(allToInsert);
+        if (error) throw error;
+      }
+      
       alert('Đã lưu!');
       fetchDailyData();
-    } catch (err) { alert('Lỗi khi lưu!'); }
+    } catch (err) { 
+      console.error(err);
+      alert('Lỗi khi lưu!'); 
+    }
     setSaving(false);
   };
 
@@ -378,7 +444,7 @@ export default function Audit() {
           const unit = allUnits.find(u => u.ingredient_id === id && u.unit_name === uName);
           if (unit) factor = unit.conversion_factor;
         }
-        const record: any = {
+        const record: TablesUpdate<'monthly_opening_stock'> = {
           ingredient_id: id,
           year_month: yearMonth,
           opening_stock: val * factor,
@@ -389,10 +455,13 @@ export default function Audit() {
         if (existingMonthlyIds[id]) record.id = existingMonthlyIds[id];
         return record;
       });
-      await supabase.from('monthly_opening_stock').upsert(upserts);
+      await supabase.from('monthly_opening_stock').upsert(upserts as TablesInsert<'monthly_opening_stock'>[]);
       alert(`Đã lưu tồn đầu!`);
       fetchMonthlyOpening();
-    } catch (err) { alert('Lỗi!'); }
+    } catch (err) { 
+      console.error(err);
+      alert('Lỗi!'); 
+    }
     setSaving(false);
   };
 
@@ -520,21 +589,22 @@ export default function Audit() {
               <tbody className="border-0">
                 {loading ? (<tr><td colSpan={6} className="py-20 text-center font-bold text-gray-400">Đang tải...</td></tr>) : 
                  auditHistory.map(a => {
-                    const variance = (a.actual_stock ?? 0) - (a.theoretical_stock ?? 0);
+                    const item = a as unknown as Tables<'stock_audits'> & { ingredients: { name: string } | null };
+                    const variance = (item.actual_stock ?? 0) - (item.theoretical_stock ?? 0);
                     return (
-                      <tr key={a.id}>
+                      <tr key={item.id}>
                         <td className="px-6 py-4 border-gray-50">
-                           <span className="text-sm font-black text-teal-600">{a.audit_date ? format(parseISO(a.audit_date), 'dd/MM/yyyy') : '-'}</span>
+                           <span className="text-sm font-black text-teal-600">{item.audit_date ? format(parseISO(item.audit_date), 'dd/MM/yyyy') : '-'}</span>
                         </td>
                         <td className="px-6 py-4 border-gray-50">
-                           <span className="fw-black text-gray-800 text-uppercase small">{a.ingredients?.name}</span>
+                           <span className="fw-black text-gray-800 text-uppercase small">{item.ingredients?.name}</span>
                         </td>
-                        <td className="px-4 py-4 text-end border-gray-50 text-gray-400 font-bold">{a.theoretical_stock?.toLocaleString()}</td>
-                        <td className="px-4 py-4 text-end border-gray-50 text-gray-800 font-black">{a.actual_stock?.toLocaleString()}</td>
+                        <td className="px-4 py-4 text-end border-gray-50 text-gray-400 font-bold">{item.theoretical_stock?.toLocaleString()}</td>
+                        <td className="px-4 py-4 text-end border-gray-50 text-gray-800 font-black">{item.actual_stock?.toLocaleString()}</td>
                         <td className={`px-4 py-4 text-end border-gray-50 font-black ${Math.abs(variance) < 0.001 ? 'text-teal-500' : variance < 0 ? 'text-red-500' : 'text-teal-500'}`}>
                            {variance > 0.001 ? '+' : ''}{variance.toLocaleString()}
                         </td>
-                        <td className="px-6 py-4 border-gray-50 text-gray-400 small italic">{a.notes || '-'}</td>
+                        <td className="px-6 py-4 border-gray-50 text-gray-400 small italic">{item.notes || '-'}</td>
                       </tr>
                     );
                  })}
@@ -609,6 +679,7 @@ export default function Audit() {
              </div>
 
              <div className="flex items-center gap-2">
+                <button onClick={exportDailyAudit} className="w-10 h-10 flex items-center justify-center bg-teal-50 border border-teal-100 text-teal-600 rounded-xl hover:bg-teal-600 hover:text-white transition-all premium-shadow" title="Xuất dữ liệu Excel"><FileDown size={18} /></button>
                 <button onClick={downloadTemplate} className="w-10 h-10 flex items-center justify-center bg-white border border-gray-100 text-gray-400 rounded-xl hover:text-teal-600 hover:border-teal-200 transition-all premium-shadow" title="Mẫu Excel"><Download size={18} /></button>
                 <label className="w-10 h-10 flex items-center justify-center bg-white border border-gray-100 text-gray-400 rounded-xl hover:text-teal-600 hover:border-teal-200 transition-all premium-shadow cursor-pointer mb-0">
                   <Upload size={18} />
@@ -678,29 +749,27 @@ export default function Audit() {
             <thead>
               <tr className="bg-gray-50/50">
                 <th className="px-6 py-4 text-gray-400 text-uppercase text-[10px] font-black tracking-widest border-0">Nguyên Liệu</th>
-                <th className="px-4 py-4 text-center text-gray-400 text-uppercase text-[10px] font-black tracking-widest border-0">Số Sách</th>
-                <th className="px-4 py-4 text-center text-teal-600 text-uppercase text-[10px] font-black tracking-widest border-0">T. Nhập</th>
-                <th className="px-4 py-4 text-center text-orange-600 text-uppercase text-[10px] font-black tracking-widest border-0">T. Xuất</th>
-                <th className="px-2 py-4 text-center text-gray-400 text-uppercase text-[10px] font-black tracking-widest border-0">Tại Kho</th>
-                <th className="px-2 py-4 text-center text-gray-400 text-uppercase text-[10px] font-black tracking-widest border-0">Tại Quầy</th>
+                <th className="px-4 py-4 text-center text-gray-400 text-uppercase text-[10px] font-black tracking-widest border-0">Đầu Ngày</th>
+                <th className="px-4 py-4 text-center text-teal-600 text-uppercase text-[10px] font-black tracking-widest border-0 font-bold">Nhập</th>
+                <th className="px-4 py-4 text-center text-orange-600 text-uppercase text-[10px] font-black tracking-widest border-0 font-bold">Xuất</th>
+                <th className="px-2 py-4 text-center text-gray-400 text-uppercase text-[10px] font-black tracking-widest border-0">Kho</th>
+                <th className="px-2 py-4 text-center text-gray-400 text-uppercase text-[10px] font-black tracking-widest border-0">Quầy</th>
                 <th className="px-4 py-4 text-center text-teal-600 text-uppercase text-[10px] font-black tracking-widest border-0">Thực Tế</th>
-                <th className="px-4 py-4 text-center text-gray-400 text-uppercase text-[10px] font-black tracking-widest border-0">Chênh Lệch</th>
-                <th className="px-6 py-4 text-gray-400 text-uppercase text-[10px] font-black tracking-widest border-0">Ghi Chú</th>
+                <th className="px-4 py-4 text-center text-gray-400 text-uppercase text-[10px] font-black tracking-widest border-0">Lý Thuyết</th>
+                <th className="px-6 py-4 text-gray-400 text-uppercase text-[10px] font-black tracking-widest border-0">Chênh Lệch</th>
               </tr>
             </thead>
             <tbody className="border-0">
               {loading ? (
-                <tr><td colSpan={7} className="px-6 py-20 text-center font-bold text-gray-400">Đang tải...</td></tr>
+                <tr><td colSpan={9} className="px-6 py-20 text-center font-bold text-gray-400">Đang tải...</td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={7} className="px-6 py-20 text-center text-gray-400 font-bold">Không có dữ liệu</td></tr>
+                <tr><td colSpan={9} className="px-6 py-20 text-center text-gray-400 font-bold">Không có dữ liệu</td></tr>
               ) : (
                 filtered.map((ing) => {
                   const opening = openingStockMap[ing.id] ?? 0;
-                  const acc = accumulatedTx[ing.id] || { in: 0, out: 0 };
-                  const theoretical = opening + acc.in - acc.out;
-                  const savedAudit = existingAuditIds[ing.id] ? dayAudits.find((a: any) => a.id === existingAuditIds[ing.id]) : null;
-                  const savedTheoretical = savedAudit ? savedAudit.theoretical_stock : theoretical;
-                  const isOutOfSync = existingAuditIds[ing.id] && Math.abs(theoretical - (savedTheoretical ?? 0)) > 0.001;
+                  const daily = dailyTx[ing.id] || { in: 0, out: 0 };
+                  const theoretical = opening + daily.in - daily.out;
+                  
                   const storeVal = storeStocks[ing.id] || '';
                   const counterVal = counterStocks[ing.id] || '';
                   const storeIn = parseFloat(storeVal) || 0;
@@ -711,6 +780,7 @@ export default function Audit() {
                     if (unit) sFactor = unit.conversion_factor;
                   }
                   const store = storeIn * sFactor;
+                  
                   const counterIn = parseFloat(counterVal) || 0;
                   const cUnit = counterUnits[ing.id] || 'base';
                   let cFactor = 1;
@@ -719,9 +789,10 @@ export default function Audit() {
                     if (unit) cFactor = unit.conversion_factor;
                   }
                   const counter = counterIn * cFactor;
+                  
                   const hasInput = storeVal !== '' || counterVal !== '';
-                  const actualValue = hasInput ? store + counter : null;
-                  const varianceValue = actualValue !== null ? actualValue - theoretical : null;
+                  const totalActual = hasInput ? store + counter : null;
+                  const varianceValue = totalActual !== null ? totalActual - theoretical : null;
                   const isHugeVariance = hasInput && theoretical > 0 && Math.abs(varianceValue ?? 0) > (theoretical * 0.2);
 
                   return (
@@ -733,12 +804,10 @@ export default function Audit() {
                              {isHugeVariance && <span className="text-[9px] font-black bg-red-500 text-white px-1.5 py-0.5 rounded-lg">SAI LỆCH CAO</span>}
                            </div>
                            <span className="text-[10px] text-gray-400 font-bold uppercase">{ing.unit}</span>
-                           {isOutOfSync && <span className="text-[8px] font-black text-amber-600 uppercase mt-1">⚠️ GD THAY ĐỔI</span>}
                         </div>
                       </td>
-                      <td className="px-4 py-4 text-center border-gray-50">
-                        <span className={`text-sm font-black ${isOutOfSync ? 'text-amber-500' : 'text-gray-400'}`}>{theoretical.toLocaleString()}</span>
-                        {isOutOfSync && <div className="text-[9px] text-gray-300 text-decoration-line-through">{(savedTheoretical ?? 0).toLocaleString()}</div>}
+                      <td className="px-4 py-4 text-center border-gray-50 bg-gray-50/20">
+                         <span className="text-sm font-black text-gray-400">{opening.toLocaleString()}</span>
                       </td>
                       <td className="px-4 py-4 text-center border-gray-50 bg-teal-50/10">
                          <span className="text-sm font-black text-teal-600">{(dailyTx[ing.id]?.in || 0).toLocaleString()}</span>
@@ -765,17 +834,17 @@ export default function Audit() {
                         </div>
                       </td>
                       <td className="px-4 py-4 text-center border-gray-50 bg-teal-50/30">
-                         <span className={`text-base font-black ${actualValue !== null ? 'text-teal-600' : 'text-gray-200'}`}>{actualValue !== null ? actualValue.toLocaleString() : '--'}</span>
+                         <span className={`text-base font-black ${totalActual !== null ? 'text-teal-600' : 'text-gray-200'}`}>{totalActual !== null ? totalActual.toLocaleString() : '--'}</span>
                       </td>
-                      <td className="px-4 py-4 text-end border-gray-50">
-                        {actualValue !== null ? (
+                      <td className="px-4 py-4 text-center border-gray-50 bg-gray-50/30">
+                         <span className="text-sm font-black text-gray-500">{theoretical.toLocaleString()}</span>
+                      </td>
+                      <td className="px-6 py-4 text-end border-gray-50">
+                        {totalActual !== null ? (
                            <span className={`text-sm font-black ${Math.abs(varianceValue ?? 0) < 0.001 ? 'text-teal-500' : (varianceValue ?? 0) < 0 ? 'text-red-500' : 'text-teal-500'}`}>
                               {varianceValue && varianceValue > 0.001 ? '+' : ''}{varianceValue?.toLocaleString()}
                            </span>
                         ) : '--'}
-                      </td>
-                      <td className="px-6 py-4 border-gray-50">
-                         <input type="text" placeholder="..." value={auditNotes[ing.id] || ''} disabled={!canEdit} onChange={e => setAuditNotes(prev => ({ ...prev, [ing.id]: e.target.value }))} className="w-full border-b border-gray-100 bg-transparent text-[11px] font-bold py-1 outline-none focus:border-teal-500" />
                       </td>
                     </tr>
                   );
