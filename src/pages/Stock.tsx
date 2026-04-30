@@ -359,7 +359,6 @@ const Stock = () => {
                 filtered.map((item) => {
                   const status = getStatus(item.actual_stock, item.min_stock);
                   const StatusIcon = status.icon;
-                  const hasAudit = item.actual_stock !== null;
                   const v = item.monthly_variance;
                   const varianceColor = v < -0.001 ? 'bg-red-50 text-danger' : v > 0.001 ? 'bg-teal-50 text-teal-600' : 'bg-gray-50 text-gray-400';
 

@@ -14,10 +14,12 @@ import Forecast from './pages/Forecast';
 import Expenses from './pages/Expenses';
 import Users from './pages/Users';
 import Profile from './pages/Profile';
+import { Toaster } from 'react-hot-toast';
 
 function App() {
   return (
     <AuthProvider>
+      <Toaster position="top-right" />
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />

@@ -4,6 +4,7 @@ import { Plus, Search, Trash2, Edit2, X, ChevronDown, ChevronRight, Eye, Copy } 
 import { Modal } from '../components/ui/Modal';
 import { format, startOfMonth, parseISO } from 'date-fns';
 import { useAuth } from '../contexts/AuthContext';
+import toast from 'react-hot-toast';
 import { Navigate } from 'react-router-dom';
 
 const TYPE_LABELS: Record<string, string> = {
@@ -188,7 +189,10 @@ export default function Transactions() {
   const handleCreateOrUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     const validLines = lines.filter(l => l.ingredient_id && l.quantity && parseFloat(l.quantity) > 0);
-    if (validLines.length === 0) return alert('Nhập ít nhất 1 dòng hợp lệ!');
+    if (validLines.length === 0) {
+      toast.error('Nhập ít nhất 1 dòng hợp lệ!');
+      return;
+    }
 
     setSaving(true);
     const isNeg = ['OUT', 'WASTE', 'SALES_USAGE'].includes(txType);
@@ -233,14 +237,14 @@ export default function Transactions() {
       resetForm();
       fetchData();
     } catch (err: any) {
-      alert('Lỗi: ' + err.message);
+      toast.error('Lỗi: ' + err.message);
     }
     setSaving(false);
   };
 
   const handleResolveProductWaste = async () => {
     if (!selectedProductId || !productQty || parseFloat(productQty) <= 0) {
-      alert('Vui lòng chọn sản phẩm và nhập số lượng!');
+      toast.error('Vui lòng chọn sản phẩm và nhập số lượng!');
       return;
     }
 
@@ -274,7 +278,7 @@ export default function Transactions() {
       const hasRecipe = resolve(selectedProductId, pQty);
 
       if (!hasRecipe) {
-        alert('Sản phẩm này chưa có định mức công thức!');
+        toast.error('Sản phẩm này chưa có định mức công thức!');
         return;
       }
 
@@ -299,9 +303,9 @@ export default function Transactions() {
       // Clear product selection
       setSelectedProductId('');
       setProductQty('');
-      alert(`Đã quy đổi ${newLines.length} nguyên liệu từ các cấp công thức.`);
+      toast.success(`Đã quy đổi ${newLines.length} nguyên liệu từ các cấp công thức.`);
     } catch (err: any) {
-      alert('Lỗi quy đổi công thức: ' + err.message);
+      toast.error('Lỗi quy đổi công thức: ' + err.message);
     } finally {
       setResolvingRecipe(false);
     }
@@ -321,7 +325,7 @@ export default function Transactions() {
     
     const { error } = await query;
     if (!error) fetchData();
-    else alert('Lỗi xóa!');
+    else toast.error('Lỗi xóa!');
   };
 
   const startEdit = (group: TransactionGroup) => {
@@ -380,7 +384,10 @@ export default function Transactions() {
 
   const handleCreateOrUpdateBranch = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!branchName.trim()) return alert('Vui lòng nhập tên cơ sở!');
+    if (!branchName.trim()) {
+      toast.error('Vui lòng nhập tên cơ sở!');
+      return;
+    }
     setSavingBranch(true);
     try {
       if (editingBranch) {
@@ -406,7 +413,7 @@ export default function Transactions() {
       setBranchNotes('');
       fetchData(); // Refresh branch list
     } catch (err: any) {
-      alert('Lỗi: ' + err.message);
+      toast.error('Lỗi: ' + err.message);
     }
     setSavingBranch(false);
   };
@@ -415,7 +422,7 @@ export default function Transactions() {
     if (!confirm('Bạn có chắc chắn muốn xóa cơ sở này?')) return;
     const { error } = await supabase.from('branches').delete().eq('id', id);
     if (error) {
-      alert('Không thể xóa cơ sở này (có thể do đã có giao dịch liên quan).');
+      toast.error('Không thể xóa cơ sở này (có thể do đã có giao dịch liên quan).');
     } else {
       fetchData();
     }

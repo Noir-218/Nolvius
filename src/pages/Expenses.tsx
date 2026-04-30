@@ -5,6 +5,7 @@ import { format, subDays, parseISO } from 'date-fns';
 import { useAuth } from '../contexts/AuthContext';
 import { Modal } from '../components/ui/Modal';
 import { Navigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
 
 interface Expense {
   id: string;
@@ -52,7 +53,10 @@ export default function Expenses() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!desc || !amount) return alert('Vui lòng nhập đủ thông tin!');
+    if (!desc || !amount) {
+      toast.error('Vui lòng nhập đủ thông tin!');
+      return;
+    }
 
     setSaving(true);
     const { error } = await supabase.from('expenses' as any).insert({
@@ -70,7 +74,7 @@ export default function Expenses() {
       setCategory('Khác');
       fetchExpenses();
     } else {
-      alert('Lỗi: ' + error.message);
+      toast.error('Lỗi: ' + error.message);
     }
     setSaving(false);
   };

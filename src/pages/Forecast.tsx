@@ -3,9 +3,11 @@ import { supabase } from '../lib/supabase';
 import {
   Calculator, TrendingDown, ShoppingCart,
   Clock, RefreshCw, AlertTriangle, CheckCircle2,
-  Calendar, Search
+  Calendar, Search, Sun, CloudRain, Cloud,
+  CloudSun
 } from 'lucide-react';
-import { format, subDays, addDays, parseISO, differenceInCalendarDays, startOfToday } from 'date-fns';
+import { format, subDays, addDays, parseISO, differenceInCalendarDays, startOfToday, isWithinInterval } from 'date-fns';
+import { useMemo } from 'react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -27,6 +29,7 @@ interface ForecastRow {
   cycleDays: number;
   reorderQty: number;
   order_type_id?: string;
+  incomingQty: number;          // hàng sắp về (user nhập)
 }
 
 interface OrderType {
@@ -60,12 +63,78 @@ export default function Forecast() {
   const [data, setData] = useState<ForecastRow[]>([]);
   const [orderTypes, setOrderTypes] = useState<OrderType[]>([]);
   const [selectedOrderTypeId, setSelectedOrderTypeId] = useState<string>('');
+  const [stockDate, setStockDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [targetDate, setTargetDate] = useState(format(addDays(new Date(), 7), 'yyyy-MM-dd'));
   const [loading, setLoading] = useState(true);
-  const [lastUpdated, setLastUpdated] = useState('');
   const [search, setSearch] = useState('');
+  const [incomingQtyMap, setIncomingQtyMap] = useState<Record<string, number>>({});
+  const [weatherFactor, setWeatherFactor] = useState(1.0);
+  const [weatherDesc, setWeatherDesc] = useState('Đang cập nhật thời tiết...');
+  const [weatherIcon, setWeatherIcon] = useState<any>(null);
 
   // ── Fetch & compute ────────────────────────────────────────────────────────
+
+  const fetchWeather = async () => {
+    try {
+      // Sử dụng WeatherAPI (Bạn có thể thay VITE_WEATHER_API_KEY trong .env)
+      const apiKey = import.meta.env.VITE_WEATHER_API_KEY || 'no_key';
+      const city = 'Hanoi';
+      
+      // Nếu không có Key, chúng ta dùng mock data hoặc thông báo
+      if (apiKey === 'no_key') {
+        setWeatherDesc('Bình thường (Chưa có API Key)');
+        setWeatherFactor(1.0);
+        setWeatherIcon(<Cloud size={20} className="text-secondary" />);
+        return;
+      }
+
+      const res = await fetch(`https://api.weatherapi.com/v1/forecast.json?key=${apiKey}&q=${city}&days=10&aqi=no`);
+      const data = await res.json();
+
+      if (data && data.forecast) {
+        // Tính factor trung bình dựa trên targetDate
+        const forecasts = data.forecast.forecastday;
+        const target = parseISO(targetDate);
+        const today = startOfToday();
+        
+        let totalFactor = 0;
+        let count = 0;
+        let mainCond = '';
+
+        forecasts.forEach((day: any) => {
+          const dDate = parseISO(day.date);
+          if (isWithinInterval(dDate, { start: today, end: target })) {
+            const cond = day.day.condition.text.toLowerCase();
+            const temp = day.day.avgtemp_c;
+            
+            let factor = 1.0;
+            if (cond.includes('rain') || cond.includes('thunder')) factor = 0.85;
+            else if (cond.includes('sunny') || cond.includes('clear')) {
+                factor = temp > 30 ? 1.25 : 1.15;
+            } else if (cond.includes('cloudy') || cond.includes('overcast')) {
+                factor = 0.95;
+            }
+            
+            totalFactor += factor;
+            count++;
+            if (count === 1) mainCond = day.day.condition.text;
+          }
+        });
+
+        const avgFactor = count > 0 ? totalFactor / count : 1.0;
+        setWeatherFactor(avgFactor);
+        setWeatherDesc(`${mainCond} (${avgFactor > 1 ? '+' : ''}${Math.round((avgFactor - 1) * 100)}% nhu cầu)`);
+        
+        // Pick icon
+        if (avgFactor > 1.1) setWeatherIcon(<Sun size={20} className="text-warning" />);
+        else if (avgFactor < 0.9) setWeatherIcon(<CloudRain size={20} className="text-primary" />);
+        else setWeatherIcon(<CloudSun size={20} className="text-info" />);
+      }
+    } catch (err) {
+      console.error('Weather fetch error:', err);
+      setWeatherDesc('Không thể lấy thời tiết');
+    }
+  };
 
   const fetchForecast = async (days: number) => {
     setLoading(true);
@@ -74,6 +143,9 @@ export default function Forecast() {
       const fromDate = subDays(today, days);
       const fromStr = format(fromDate, 'yyyy-MM-dd');
       const todayStr = format(today, 'yyyy-MM-dd');
+
+      // ── Fetch Weather ──────────────────────────────────────────────────────
+      await fetchWeather();
 
       // ── 0. Fetch Order Types ────────────────────────────────────────────────
       const { data: typesData } = await supabase
@@ -138,7 +210,7 @@ export default function Forecast() {
       }
 
       // ── Tính số ngày tới ngày mục tiêu ────────────────────────────────────────
-      const daysToTarget = Math.max(1, differenceInCalendarDays(parseISO(targetDate), startOfToday()));
+      const daysToTarget = Math.max(1, differenceInCalendarDays(parseISO(targetDate), parseISO(stockDate)));
 
       // ── Build forecast rows ───────────────────────────────────────────────────
       const rows: ForecastRow[] = ingredients.map((ing: any) => {
@@ -156,18 +228,23 @@ export default function Forecast() {
           source = 'audit_diff';
         }
 
-        const avgDaily = totalConsumption / days;
+        const rawAvgDaily = totalConsumption / days;
+        const avgDaily = rawAvgDaily * weatherFactor; // Áp dụng hệ số thời tiết
+        
         const stockInfo = (stocksData ?? [] as any[]).find((s: any) => s.ingredient_id === ing.id);
         const currentStock = stockInfo?.current_stock ?? 0;
         const minStock = ing.min_stock ?? 0;
+        const incomingQty = incomingQtyMap[ing.id] || 0;
 
         // Số ngày tồn còn dùng được
         const daysRemaining = avgDaily > 0
           ? Math.floor(currentStock / avgDaily)
           : null;
 
-        // Đề xuất đặt hàng (theo Target Date thay vì cycle fixed)
-        const reorderQty = Math.max(0, (avgDaily * daysToTarget + minStock) - currentStock);
+        // Công thức mới: (Tiêu hao + Min) - (Tồn hiện tại + Hàng sắp về)
+        const totalNeeded = (avgDaily * daysToTarget + minStock);
+        const totalAvailable = (currentStock + incomingQty);
+        const reorderQty = Math.max(0, totalNeeded - totalAvailable);
 
         return {
           id: ing.id,
@@ -182,6 +259,7 @@ export default function Forecast() {
           cycleDays: daysToTarget,
           reorderQty,
           order_type_id: ing.order_type_id,
+          incomingQty,
         };
       });
 
@@ -198,16 +276,25 @@ export default function Forecast() {
       });
 
       setData(rows);
-      setLastUpdated(format(new Date(), 'HH:mm dd/MM/yyyy'));
     } catch (err) {
       console.error(err);
     }
     setLoading(false);
   };
 
-  useEffect(() => { fetchForecast(periodDays); }, [periodDays, targetDate]);
+  useEffect(() => { fetchForecast(periodDays); }, [periodDays, targetDate, stockDate]);
 
-  const filteredData = data.filter(r => {
+  const calculatedData = useMemo(() => {
+    return data.map(item => {
+      const incomingQty = incomingQtyMap[item.id] || 0;
+      const totalNeeded = (item.avgDaily * item.cycleDays + item.minStock);
+      const totalAvailable = (item.currentStock + incomingQty);
+      const reorderQty = Math.max(0, totalNeeded - totalAvailable);
+      return { ...item, incomingQty, reorderQty };
+    });
+  }, [data, incomingQtyMap]);
+
+  const filteredData = calculatedData.filter(r => {
     const matchSearch = r.name.toLowerCase().includes(search.toLowerCase());
     const matchOrderType = !selectedOrderTypeId || r.order_type_id === selectedOrderTypeId;
     return matchSearch && matchOrderType;
@@ -222,11 +309,25 @@ export default function Forecast() {
       {/* Header */}
       <div className="row align-items-center mb-4 g-3">
         <div className="col-12 col-md-auto me-md-auto">
-          <h1 className="h3 fw-black text-dark mb-1">DỰ ĐOÁN & ĐỀ XUẤT NHẬP HÀNG</h1>
-          <p className="text-secondary small mb-0">
-            Tính tốc độ tiêu thụ thực tế để dự báo lượng hàng cần đặt.
-            {lastUpdated && <span className="ms-2 d-none d-sm-inline text-muted small opacity-50">· Cập nhật: {lastUpdated}</span>}
-          </p>
+          <div className="d-flex align-items-center gap-3">
+             <div>
+                <h1 className="h3 fw-black text-dark mb-1 text-uppercase">Dự đoán & Đề xuất đặt hàng</h1>
+                <p className="text-secondary small mb-0">
+                  Phân tích tiêu thụ thực tế & thời tiết Hà Nội để tối ưu tồn kho.
+                </p>
+             </div>
+             {weatherDesc && (
+                <div className="d-none d-lg-flex align-items-center gap-2 bg-white px-3 py-2 rounded-4 shadow-sm border border-light">
+                   <div className="bg-light p-2 rounded-circle">
+                      {weatherIcon || <Sun size={20} className="text-warning" />}
+                   </div>
+                   <div>
+                      <div className="fw-black text-dark" style={{ fontSize: '13px' }}>Hà Nội - Dự báo</div>
+                      <div className="small text-muted fw-bold" style={{ fontSize: '11px' }}>{weatherDesc}</div>
+                   </div>
+                </div>
+             )}
+          </div>
         </div>
         <div className="col-12 col-md-auto">
           <button
@@ -292,6 +393,23 @@ export default function Forecast() {
               </select>
             </div>
             <div className="col-12 col-md-auto border-start ps-md-4">
+              <span className="small fw-bold text-muted text-uppercase tracking-wider">Ngày chốt tồn:</span>
+            </div>
+            <div className="col-12 col-md-auto">
+              <div className="input-group input-group-sm">
+                <span className="input-group-text bg-white border-0 shadow-sm rounded-start-pill pe-0">
+                  <Calendar size={14} className="text-secondary" />
+                </span>
+                <input 
+                  type="date" 
+                  className="form-control form-control-sm border-0 shadow-sm rounded-end-pill ps-2 fw-bold"
+                  value={stockDate}
+                  onChange={e => setStockDate(e.target.value)}
+                  max={targetDate}
+                />
+              </div>
+            </div>
+            <div className="col-12 col-md-auto border-start ps-md-4">
               <span className="small fw-bold text-muted text-uppercase tracking-wider">Dự trù đến:</span>
             </div>
             <div className="col-12 col-md-auto">
@@ -303,7 +421,7 @@ export default function Forecast() {
                   type="date" 
                   className="form-control form-control-sm border-0 shadow-sm rounded-end-pill ps-2 fw-bold"
                   value={targetDate}
-                  min={format(new Date(), 'yyyy-MM-dd')}
+                  min={stockDate}
                   onChange={e => setTargetDate(e.target.value)}
                 />
               </div>
@@ -378,6 +496,7 @@ export default function Forecast() {
                 <th className="px-3 py-3 text-dark text-uppercase small fw-bold tracking-widest border-0 text-end">Tiêu hao</th>
                 <th className="px-3 py-3 text-dark text-uppercase small fw-bold tracking-widest border-0 text-end">TB/ngày</th>
                 <th className="px-3 py-3 text-dark text-uppercase small fw-bold tracking-widest border-0 text-end">Tồn kho</th>
+                <th className="px-3 py-3 text-dark text-uppercase small fw-bold tracking-widest border-0 text-center">Hàng sắp về</th>
                 <th className="px-3 py-3 text-dark text-uppercase small fw-bold tracking-widest border-0 text-center">Dự báo</th>
                 <th className="px-3 py-3 text-primary text-uppercase small fw-black tracking-widest border-0 text-end">Đề xuất đặt</th>
               </tr>
@@ -445,6 +564,20 @@ export default function Forecast() {
                       <td className={`px-3 py-3 text-end fw-black ${item.currentStock <= 0 ? 'text-danger' : 'text-dark'}`} style={{ fontSize: '15px' }}>
                         {fmt(item.currentStock)} <small className="fw-normal text-muted" style={{ fontSize: '11px' }}>{item.unit}</small>
                       </td>
+                      <td className="px-3 py-3" style={{ width: '120px' }}>
+                        <div className="input-group input-group-sm">
+                          <input 
+                            type="number"
+                            className="form-control form-control-sm text-center fw-bold border-primary-subtle rounded-pill"
+                            placeholder="0"
+                            value={incomingQtyMap[item.id] || ''}
+                            onChange={(e) => {
+                              const val = parseFloat(e.target.value) || 0;
+                              setIncomingQtyMap(prev => ({ ...prev, [item.id]: val }));
+                            }}
+                          />
+                        </div>
+                      </td>
                       <td className="px-3 py-3 text-center">
                         {daysBadge ? (
                           <span className={`badge rounded-pill d-inline-flex align-items-center gap-1 shadow-sm px-2 py-1 ${daysBadge.cls}`}>
@@ -472,11 +605,11 @@ export default function Forecast() {
         </div>
         {!loading && data.length > 0 && (
           <div className="card-footer bg-light border-0 py-3 px-4">
-             <p className="small text-muted mb-0 lh-base" style={{ fontSize: '11px' }}>
+              <p className="small text-muted mb-0 lh-base" style={{ fontSize: '11px' }}>
                 <span className="me-3"><strong>Bán hàng:</strong> SALES_USAGE + WASTE</span>
                 <span className="me-3"><strong>Chênh lệch:</strong> NVL không có sales</span>
-                <span className="me-3"><strong>Đề xuất:</strong> (TB/ngày × Số ngày tới ngày mục tiêu + tồn min) − tồn hiện tại</span>
-                <span className="text-danger">· OUT không tính vào tiêu hao</span>
+                <span className="me-3"><strong>Hệ số thời tiết:</strong> {weatherFactor.toFixed(2)}x (Áp dụng cho TB/ngày)</span>
+                <span className="me-3"><strong>Đề xuất:</strong> (TB/ngày × Hệ số × Ngày dự trù + tồn min) − (tồn hiện tại + hàng sắp về)</span>
              </p>
           </div>
         )}

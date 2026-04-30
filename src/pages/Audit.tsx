@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Tables, TablesInsert, TablesUpdate } from '../types/database.types';
 import { supabase } from '../lib/supabase';
-import { Search, Save, History, PackageOpen, ChevronLeft, ChevronRight, AlertCircle, CupSoda, Upload, Download, ClipboardCheck, FileDown } from 'lucide-react';
+import { Search, Save, History, PackageOpen, ChevronLeft, ChevronRight, AlertCircle, CupSoda, Upload, Download, ClipboardCheck, FileDown, Calculator, X } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { TeaAndCakeAuditTab } from '../components/audit/TeaAndCakeAuditTab';
 import { useAuth } from '../contexts/AuthContext';
 import { format, parseISO, subDays, startOfMonth } from 'date-fns';
+import toast from 'react-hot-toast';
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -55,6 +56,51 @@ export default function Audit() {
   const [existingMonthlyIds, setExistingMonthlyIds] = useState<Record<string, string>>({});
   const [hasMonthlyOpening, setHasMonthlyOpening] = useState(false);
   const [allUnits, setAllUnits] = useState<Tables<'ingredient_units'>[]>([]);
+
+  const [calcModal, setCalcModal] = useState<{
+    isOpen: boolean;
+    ingId: string;
+    location: 'store' | 'counter' | 'monthly';
+    ingName: string;
+    baseUnit: string;
+  } | null>(null);
+  const [calcValues, setCalcValues] = useState<Record<string, string>>({});
+
+  const openCalc = (ing: Ingredient, location: 'store' | 'counter' | 'monthly') => {
+    setCalcModal({
+      isOpen: true,
+      ingId: ing.id,
+      location,
+      ingName: ing.name,
+      baseUnit: ing.unit
+    });
+    setCalcValues({});
+  };
+
+  const closeCalc = () => setCalcModal(null);
+
+  const applyCalc = () => {
+    if (!calcModal) return;
+    const { ingId, location } = calcModal;
+    let total = parseFloat(calcValues['base']) || 0;
+    const unitsForIng = allUnits.filter(u => u.ingredient_id === ingId);
+    unitsForIng.forEach(u => {
+      total += (parseFloat(calcValues[u.id]) || 0) * u.conversion_factor;
+    });
+    if (total > 0 || Object.values(calcValues).some(v => v !== '')) {
+      if (location === 'store') {
+        setStoreStocks(prev => ({ ...prev, [ingId]: total.toString() }));
+        setStoreUnits(prev => ({ ...prev, [ingId]: 'base' }));
+      } else if (location === 'counter') {
+        setCounterStocks(prev => ({ ...prev, [ingId]: total.toString() }));
+        setCounterUnits(prev => ({ ...prev, [ingId]: 'base' }));
+      } else if (location === 'monthly') {
+        setMonthlyOpeningInputs(prev => ({ ...prev, [ingId]: total.toString() }));
+        setMonthlyOpeningUnits(prev => ({ ...prev, [ingId]: 'base' }));
+      }
+    }
+    closeCalc();
+  };
 
   const [auditHistory, setAuditHistory] = useState<Tables<'stock_audits'>[]>([]);
 
@@ -275,7 +321,7 @@ export default function Audit() {
         });
         setStoreStocks(newStoreStocks);
         setCounterStocks(newCounterStocks);
-        alert(`Đã nhập dữ liệu cho ${matchCount} nguyên liệu!`);
+        toast.success(`Đã nhập dữ liệu cho ${matchCount} nguyên liệu!`);
       } catch (err) { 
         console.error(err);
         alert('Lỗi Excel!'); 
@@ -337,7 +383,7 @@ export default function Audit() {
       .filter(Boolean);
 
     if (dataToExport.length === 0) {
-      alert('Không có dữ liệu kiểm kê để xuất!');
+      toast.error('Không có dữ liệu kiểm kê để xuất!');
       return;
     }
 
@@ -351,7 +397,10 @@ export default function Audit() {
     const filledKeys = Object.keys(storeStocks).concat(Object.keys(counterStocks))
       .filter((v, i, a) => a.indexOf(v) === i)
       .filter(k => storeStocks[k] !== '' || counterStocks[k] !== '');
-    if (filledKeys.length === 0) { alert('Vui lòng nhập tồn!'); return; }
+    if (filledKeys.length === 0) { 
+      toast.error('Vui lòng nhập tồn!'); 
+      return; 
+    }
     setSaving(true);
     try {
       // Auto-cleanup: Delete existing audits for these ingredients on this specific date
@@ -423,7 +472,7 @@ export default function Audit() {
         if (error) throw error;
       }
       
-      alert('Đã lưu!');
+      toast.success('Đã lưu!');
       fetchDailyData();
     } catch (err) { 
       console.error(err);
@@ -456,7 +505,7 @@ export default function Audit() {
         return record;
       });
       await supabase.from('monthly_opening_stock').upsert(upserts as TablesInsert<'monthly_opening_stock'>[]);
-      alert(`Đã lưu tồn đầu!`);
+      toast.success(`Đã lưu tồn đầu!`);
       fetchMonthlyOpening();
     } catch (err) { 
       console.error(err);
@@ -532,12 +581,19 @@ export default function Audit() {
                        <div className="text-[10px] text-gray-400 font-bold uppercase">{ing.unit}</div>
                     </td>
                     <td className="px-4 py-3 border-gray-50">
-                      <div className="flex items-center gap-1 bg-white border border-gray-100 rounded-xl px-2 mx-auto" style={{maxWidth: '220px'}}>
-                        <input type="number" value={monthlyOpeningInputs[ing.id] || ''} onChange={e => setMonthlyOpeningInputs(prev => ({ ...prev, [ing.id]: e.target.value }))} className="w-full text-end border-0 font-black text-sm bg-transparent h-9 outline-none" placeholder="0" />
-                        <select value={monthlyOpeningUnits[ing.id] || 'base'} onChange={e => setMonthlyOpeningUnits(prev => ({ ...prev, [ing.id]: e.target.value }))} className="border-0 bg-transparent text-[9px] font-black text-gray-400 uppercase w-12 outline-none">
-                           <option value="base">{ing.unit}</option>
-                           {allUnits.filter(u => u.ingredient_id === ing.id).map(u => (<option key={u.id} value={u.unit_name}>{u.unit_name}</option>))}
-                        </select>
+                      <div className="flex items-center justify-center gap-1 mx-auto" style={{maxWidth: '240px'}}>
+                        <div className="flex items-center flex-1 gap-1 bg-white border border-gray-100 rounded-xl px-2">
+                          <input type="number" value={monthlyOpeningInputs[ing.id] || ''} onChange={e => setMonthlyOpeningInputs(prev => ({ ...prev, [ing.id]: e.target.value }))} className="w-full text-end border-0 font-black text-sm bg-transparent h-9 outline-none" placeholder="0" />
+                          <select value={monthlyOpeningUnits[ing.id] || 'base'} onChange={e => setMonthlyOpeningUnits(prev => ({ ...prev, [ing.id]: e.target.value }))} className="border-0 bg-transparent text-[9px] font-black text-gray-400 uppercase w-12 outline-none">
+                             <option value="base">{ing.unit}</option>
+                             {allUnits.filter(u => u.ingredient_id === ing.id).map(u => (<option key={u.id} value={u.unit_name}>{u.unit_name}</option>))}
+                          </select>
+                        </div>
+                        {allUnits.some(u => u.ingredient_id === ing.id) && (
+                          <button onClick={() => openCalc(ing, 'monthly')} className="p-2 bg-teal-50 text-teal-600 rounded-xl hover:bg-teal-600 hover:text-white transition-all shadow-sm premium-shadow" title="Nhập nhiều quy cách">
+                            <Calculator size={14} />
+                          </button>
+                        )}
                       </div>
                     </td>
                     <td className="px-6 py-4 border-gray-50">
@@ -815,22 +871,36 @@ export default function Audit() {
                       <td className="px-4 py-4 text-center border-gray-50 bg-orange-50/10">
                          <span className="text-sm font-black text-orange-600">{(dailyTx[ing.id]?.out || 0).toLocaleString()}</span>
                       </td>
-                      <td className="px-2 py-4 border-gray-50">
-                        <div className="flex items-center gap-1 bg-white border border-gray-100 rounded-xl px-2">
-                           <input type="number" step="0.000001" value={storeVal} disabled={!canEdit} onChange={e => setStoreStocks(prev => ({ ...prev, [ing.id]: e.target.value }))} className="w-full text-end border-0 font-black text-sm bg-transparent h-9 outline-none" placeholder="0" />
-                           <select value={storeUnits[ing.id] || 'base'} onChange={e => setStoreUnits(prev => ({ ...prev, [ing.id]: e.target.value }))} className="border-0 bg-transparent text-[9px] font-black text-gray-400 uppercase w-12 outline-none">
-                             <option value="base">{ing.unit}</option>
-                             {allUnits.filter(u => u.ingredient_id === ing.id).map(u => (<option key={u.id} value={u.unit_name}>{u.unit_name}</option>))}
-                           </select>
+                      <td className="px-2 py-4 border-gray-50 min-w-[120px]">
+                        <div className="flex items-center gap-1">
+                          <div className="flex-1 flex items-center gap-1 bg-white border border-gray-100 rounded-xl px-2">
+                             <input type="number" step="0.000001" value={storeVal} disabled={!canEdit} onChange={e => setStoreStocks(prev => ({ ...prev, [ing.id]: e.target.value }))} className="w-full text-end border-0 font-black text-sm bg-transparent h-9 outline-none min-w-[40px]" placeholder="0" />
+                             <select value={storeUnits[ing.id] || 'base'} disabled={!canEdit} onChange={e => setStoreUnits(prev => ({ ...prev, [ing.id]: e.target.value }))} className="border-0 bg-transparent text-[9px] font-black text-gray-400 uppercase w-12 outline-none">
+                               <option value="base">{ing.unit}</option>
+                               {allUnits.filter(u => u.ingredient_id === ing.id).map(u => (<option key={u.id} value={u.unit_name}>{u.unit_name}</option>))}
+                             </select>
+                          </div>
+                          {canEdit && allUnits.some(u => u.ingredient_id === ing.id) && (
+                            <button onClick={() => openCalc(ing, 'store')} className="p-1.5 bg-teal-50 text-teal-600 rounded-xl hover:bg-teal-600 hover:text-white transition-all shadow-sm premium-shadow" title="Nhập nhiều quy cách">
+                              <Calculator size={14} />
+                            </button>
+                          )}
                         </div>
                       </td>
-                      <td className="px-2 py-4 border-gray-50">
-                        <div className="flex items-center gap-1 bg-teal-50/50 border border-teal-100 rounded-xl px-2">
-                           <input type="number" step="0.000001" value={counterVal} disabled={!canEdit} onChange={e => setCounterStocks(prev => ({ ...prev, [ing.id]: e.target.value }))} className="w-full text-end border-0 font-black text-sm bg-transparent h-9 outline-none" placeholder="0" />
-                           <select value={counterUnits[ing.id] || 'base'} onChange={e => setCounterUnits(prev => ({ ...prev, [ing.id]: e.target.value }))} className="border-0 bg-transparent text-[9px] font-black text-gray-400 uppercase w-12 outline-none">
-                             <option value="base">{ing.unit}</option>
-                             {allUnits.filter(u => u.ingredient_id === ing.id).map(u => (<option key={u.id} value={u.unit_name}>{u.unit_name}</option>))}
-                           </select>
+                      <td className="px-2 py-4 border-gray-50 min-w-[120px]">
+                        <div className="flex items-center gap-1">
+                          <div className="flex-1 flex items-center gap-1 bg-teal-50/50 border border-teal-100 rounded-xl px-2">
+                             <input type="number" step="0.000001" value={counterVal} disabled={!canEdit} onChange={e => setCounterStocks(prev => ({ ...prev, [ing.id]: e.target.value }))} className="w-full text-end border-0 font-black text-sm bg-transparent h-9 outline-none min-w-[40px]" placeholder="0" />
+                             <select value={counterUnits[ing.id] || 'base'} disabled={!canEdit} onChange={e => setCounterUnits(prev => ({ ...prev, [ing.id]: e.target.value }))} className="border-0 bg-transparent text-[9px] font-black text-gray-400 uppercase w-12 outline-none">
+                               <option value="base">{ing.unit}</option>
+                               {allUnits.filter(u => u.ingredient_id === ing.id).map(u => (<option key={u.id} value={u.unit_name}>{u.unit_name}</option>))}
+                             </select>
+                          </div>
+                          {canEdit && allUnits.some(u => u.ingredient_id === ing.id) && (
+                            <button onClick={() => openCalc(ing, 'counter')} className="p-1.5 bg-teal-50 text-teal-600 rounded-xl hover:bg-teal-600 hover:text-white transition-all shadow-sm premium-shadow" title="Nhập nhiều quy cách">
+                              <Calculator size={14} />
+                            </button>
+                          )}
                         </div>
                       </td>
                       <td className="px-4 py-4 text-center border-gray-50 bg-teal-50/30">
@@ -854,6 +924,89 @@ export default function Audit() {
           </table>
         </div>
       </div>
+
+      {calcModal && calcModal.isOpen && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-gray-900/40 backdrop-blur-sm animate__animated animate__fadeIn animate__faster">
+          <div className="bg-white rounded-3xl shadow-2xl border border-gray-100 w-full max-w-sm overflow-hidden transform transition-all m-4">
+            <div className="p-4 border-b border-gray-50 flex items-center justify-between bg-gray-50/50">
+              <div className="flex items-center gap-3">
+                <div className="bg-teal-100 p-2 rounded-xl">
+                  <Calculator size={18} className="text-teal-600" />
+                </div>
+                <div>
+                  <h3 className="font-black text-gray-800 tracking-tight text-sm uppercase mb-0">Máy Tính Quy Đổi</h3>
+                  <p className="text-[11px] font-bold text-teal-600 mb-0">{calcModal.ingName} ({calcModal.location === 'store' ? 'Kho' : calcModal.location === 'counter' ? 'Quầy' : 'Tồn Đầu'})</p>
+                </div>
+              </div>
+              <button onClick={closeCalc} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all">
+                <X size={18} />
+              </button>
+            </div>
+            
+            <div className="p-5 max-h-[60vh] overflow-y-auto">
+              <div className="space-y-3">
+                {allUnits.filter(u => u.ingredient_id === calcModal.ingId).map(u => (
+                  <div key={u.id} className="flex items-center gap-3">
+                    <div className="flex-1">
+                      <div className="text-[11px] font-black text-gray-800 uppercase">{u.unit_name}</div>
+                      <div className="text-[9px] font-bold text-gray-400">1 {u.unit_name} = {u.conversion_factor} {calcModal.baseUnit}</div>
+                    </div>
+                    <div className="w-32">
+                      <input 
+                        type="number" 
+                        min="0"
+                        step="0.000001"
+                        value={calcValues[u.id] || ''}
+                        onChange={e => setCalcValues(prev => ({ ...prev, [u.id]: e.target.value }))}
+                        placeholder="0"
+                        className="w-full bg-gray-50 border border-gray-100 rounded-xl px-3 py-2 text-end font-black text-sm text-teal-700 outline-none focus:ring-2 focus:ring-teal-500/20 transition-all"
+                      />
+                    </div>
+                  </div>
+                ))}
+                
+                <div className="h-px bg-gray-100 my-4" />
+                
+                <div className="flex items-center gap-3">
+                  <div className="flex-1">
+                    <div className="text-[11px] font-black text-gray-800 uppercase">{calcModal.baseUnit} <span className="text-gray-400 font-bold">(Lẻ)</span></div>
+                  </div>
+                  <div className="w-32">
+                    <input 
+                      type="number" 
+                      min="0"
+                      step="0.000001"
+                      value={calcValues['base'] || ''}
+                      onChange={e => setCalcValues(prev => ({ ...prev, 'base': e.target.value }))}
+                      placeholder="0"
+                      className="w-full bg-gray-50 border border-gray-100 rounded-xl px-3 py-2 text-end font-black text-sm text-teal-700 outline-none focus:ring-2 focus:ring-teal-500/20 transition-all"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div className="p-4 border-t border-gray-50 bg-gray-50/50 flex items-center justify-between">
+              <div className="text-xs font-bold text-gray-500">
+                Tổng cộng:<br/>
+                <span className="text-lg font-black text-teal-600">
+                  {(() => {
+                    let t = parseFloat(calcValues['base']) || 0;
+                    allUnits.filter(u => u.ingredient_id === calcModal.ingId).forEach(u => {
+                      t += (parseFloat(calcValues[u.id]) || 0) * u.conversion_factor;
+                    });
+                    return t.toLocaleString();
+                  })()} <span className="text-xs">{calcModal.baseUnit}</span>
+                </span>
+              </div>
+              <button onClick={applyCalc} className="btn bg-teal-600 hover:bg-teal-700 text-white font-black rounded-xl px-5 py-2 shadow-lg shadow-teal-100 border-0 transition-all text-sm flex items-center gap-2">
+                Áp dụng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <style>{`
         .btn-teal-ghost { color: #64748b; font-size: 13px; font-weight: 700; border: none; padding: 8px 16px; }
         .btn-teal-ghost:hover { background-color: #f0fdfa; color: #0d9488; }
