@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Tables, TablesInsert, TablesUpdate } from '../../types/database.types';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import toast from 'react-hot-toast';
 import {
   Plus, Trash2, Save,
   CheckCircle2, AlertTriangle, AlertCircle,
@@ -211,24 +212,29 @@ export const TeaAndCakeAuditTab: React.FC<Props> = ({ selectedDate }) => {
     );
     
     // Yêu cầu nhập ít nhất 1 NSX
-    if (allLotsToSave.length === 0) { alert('Vui lòng nhập ít nhất 1 NSX!'); return; }
+    if (allLotsToSave.length === 0) { toast.error('Vui lòng nhập ít nhất 1 NSX!'); return; }
 
     setSaving(true);
     try {
       // ── 1. Lưu vào tea_cake_audits ───────────────────────────────────────────
-      // Xóa các bản ghi cũ của ngày này cho các ingredient đã chọn
-      if (savedIds.length > 0) {
-        await supabase.from('tea_cake_audits').delete().in('id', savedIds);
+      // Xác định các ID cần xóa (có trong savedIds nhưng không còn trong allLotsToSave)
+      const currentIds = allLotsToSave.map(l => l.id).filter(Boolean) as string[];
+      const idsToDelete = savedIds.filter(id => !currentIds.includes(id));
+      
+      if (idsToDelete.length > 0) {
+        const { error: delErr } = await supabase.from('tea_cake_audits').delete().in('id', idsToDelete);
+        if (delErr) console.warn('Cảnh báo: Không thể dọn dẹp một số bản ghi cũ:', delErr);
       }
       
-      const { error: teaErr } = await supabase.from('tea_cake_audits').insert(
+      const { error: teaErr } = await supabase.from('tea_cake_audits').upsert(
         allLotsToSave.map(l => ({
+          ...(l.id ? { id: l.id } : {}),
           audit_date: selectedDate,
           item_type: l.item_type,
           ingredient_id: l.ingredient_id,
           manufacture_date: l.manufacture_date,
           expiry_date: l.expiry_date,
-          quantity: l.quantity === '' ? null : Number(l.quantity),
+          quantity: l.quantity === '' ? null : (Number(l.quantity) || 0),
           notes: l.notes || null,
           audited_by: user?.id,
         }))
@@ -262,7 +268,7 @@ export const TeaAndCakeAuditTab: React.FC<Props> = ({ selectedDate }) => {
       if (priorAudits) {
         priorAudits.forEach((a) => {
           if (a.ingredient_id && priorActualMap[a.ingredient_id] === undefined) {
-            priorActualMap[a.ingredient_id] = a.actual_stock ?? 0;
+            priorActualMap[a.ingredient_id] = Number(a.actual_stock) || 0;
           }
         });
       }
@@ -274,7 +280,7 @@ export const TeaAndCakeAuditTab: React.FC<Props> = ({ selectedDate }) => {
         .eq('year_month', selectedDate.slice(0, 7));
       
       const monthlyMap: Record<string, number> = {};
-      if (monthlyData) monthlyData.forEach((m) => { monthlyMap[m.ingredient_id] = m.opening_stock ?? 0; });
+      if (monthlyData) monthlyData.forEach((m) => { monthlyMap[m.ingredient_id] = Number(m.opening_stock) || 0; });
 
       // 2.4 Fetch transactions for theoretical (Since last audit up to today)
       const { data: txData } = await supabase
@@ -305,7 +311,7 @@ export const TeaAndCakeAuditTab: React.FC<Props> = ({ selectedDate }) => {
 
           if (shouldAcc) {
             if (!txSummary[tx.ingredient_id]) txSummary[tx.ingredient_id] = { in: 0, out: 0 };
-            const qty = Math.abs(Number(tx.quantity));
+            const qty = Math.abs(Number(tx.quantity)) || 0;
             if (['IN', 'IN_TRANSFER'].includes(tx.type)) txSummary[tx.ingredient_id].in += qty;
             else if (['OUT', 'WASTE', 'SALES_USAGE'].includes(tx.type)) txSummary[tx.ingredient_id].out += qty;
           }
@@ -323,29 +329,30 @@ export const TeaAndCakeAuditTab: React.FC<Props> = ({ selectedDate }) => {
           : null;
 
         // Tính opening
-        let opening = existing?.opening_stock;
-        if (opening === undefined || opening === null) {
+        let opening = Number(existing?.opening_stock);
+        if (existing?.opening_stock === undefined || existing?.opening_stock === null) {
           if (selectedDate.slice(8, 10) !== '01' && priorActualMap[g.ingredient_id] !== undefined) {
             opening = priorActualMap[g.ingredient_id];
           } else {
             opening = monthlyMap[g.ingredient_id] ?? 0;
           }
         }
+        opening = Number(opening) || 0;
 
         // Tính theoretical
         const tx = txSummary[g.ingredient_id] || { in: 0, out: 0 };
-        const theoretical = opening + tx.in - tx.out;
+        const theoretical = Number(opening + (Number(tx.in) || 0) - (Number(tx.out) || 0)) || 0;
 
-        const counter = existing?.stock_in_counter ?? 0;
-        const actual = storeQty === null ? null : (storeQty + counter);
+        const counter = Number(existing?.stock_in_counter) || 0;
+        const actual = storeQty === null ? null : Number(storeQty + counter);
 
         const record: TablesUpdate<'stock_audits'> = {
           ingredient_id: g.ingredient_id,
           audit_date: selectedDate,
           stock_in_store: storeQty,
           stock_in_counter: counter,
-          actual_stock: (actual ?? theoretical) as number, // Tránh null actual_stock nếu bảng yêu cầu non-null
-          opening_stock: opening as number,
+          actual_stock: Number(actual ?? theoretical) || 0,
+          opening_stock: opening,
           theoretical_stock: theoretical,
           notes: existing?.notes ?? '',
           audited_by: user?.id,
@@ -357,11 +364,11 @@ export const TeaAndCakeAuditTab: React.FC<Props> = ({ selectedDate }) => {
       const { error: upsertErr } = await supabase.from('stock_audits').upsert(recordsToUpsert as TablesInsert<'stock_audits'>[]);
       if (upsertErr) throw upsertErr;
 
-      alert('Đã lưu thành công! Cột Kho trong phiếu kiểm kê đã được cập nhật.');
+      toast.success('Đã lưu thành công! Cột Kho trong phiếu kiểm kê đã được cập nhật.');
       fetchData(selectedDate);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      alert('Lỗi: ' + ((err as Error)?.message ?? 'Không xác định'));
+      toast.error('Lỗi: ' + (err?.message || err?.details || JSON.stringify(err)));
     }
     setSaving(false);
   };
@@ -386,7 +393,7 @@ export const TeaAndCakeAuditTab: React.FC<Props> = ({ selectedDate }) => {
       link.click();
     } catch (err) {
       console.error('Lỗi khi xuất ảnh:', err);
-      alert('Đã có lỗi xảy ra khi tạo ảnh. Vui lòng thử lại.');
+      toast.error('Đã có lỗi xảy ra khi tạo ảnh. Vui lòng thử lại.');
     }
   };
 

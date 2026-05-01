@@ -403,25 +403,9 @@ export default function Audit() {
     }
     setSaving(true);
     try {
-      // Auto-cleanup: Delete existing audits for these ingredients on this specific date
-      // to avoid duplicates and double-counting in variances.
-      const { error: delErr } = await supabase
-        .from('stock_audits')
-        .delete()
-        .eq('audit_date', selectedDate)
-        .in('ingredient_id', filledKeys);
-      
-      if (delErr) {
-        console.error('Error during auto-cleanup:', delErr);
-        if (!window.confirm('Không thể dọn dẹp dữ liệu cũ. Bạn có muốn tiếp tục lưu đè (có thể gây lặp số liệu)?')) {
-          setSaving(false);
-          return;
-        }
-      }
-
       const hugeVariances: string[] = [];
-      const toUpdate: TablesUpdate<'stock_audits'>[] = [];
-      const toInsert: TablesInsert<'stock_audits'>[] = [];
+      const recordsToUpsert: TablesUpdate<'stock_audits'>[] = [];
+
       filledKeys.forEach(id => {
         const storeIn = parseFloat(storeStocks[id]) || 0;
         const sUnit = storeUnits[id] || 'base';
@@ -430,7 +414,8 @@ export default function Audit() {
           const unit = allUnits.find(u => u.ingredient_id === id && u.unit_name === sUnit);
           if (unit) sFactor = unit.conversion_factor;
         }
-        const store = storeIn * sFactor;
+        const store = Number(storeIn * sFactor) || 0;
+
         const counterIn = parseFloat(counterStocks[id]) || 0;
         const cUnit = counterUnits[id] || 'base';
         let cFactor = 1;
@@ -438,15 +423,18 @@ export default function Audit() {
           const unit = allUnits.find(u => u.ingredient_id === id && u.unit_name === cUnit);
           if (unit) cFactor = unit.conversion_factor;
         }
-        const counter = counterIn * cFactor;
-        const actual = store + counter;
-        const opening = openingStockMap[id] ?? 0;
+        const counter = Number(counterIn * cFactor) || 0;
+
+        const actual = Number(store + counter) || 0;
+        const opening = Number(openingStockMap[id]) || 0;
         const daily = dailyTx[id] || { in: 0, out: 0 };
-        const theoretical = opening + daily.in - daily.out;
+        const theoretical = Number(opening + (Number(daily.in) || 0) - (Number(daily.out) || 0)) || 0;
+
         if (theoretical > 0 && Math.abs(actual - theoretical) > (theoretical * 0.2)) {
           hugeVariances.push(ingredients.find(i => i.id === id)?.name || id);
         }
-        const base = {
+
+        const record: any = {
           ingredient_id: id,
           audit_date: selectedDate,
           opening_stock: opening,
@@ -457,26 +445,27 @@ export default function Audit() {
           notes: '',
           audited_by: user?.id,
         };
+
         const existingId = existingAuditIdsRef.current[id];
-        if (existingId) toUpdate.push({ ...base, id: existingId });
-        else toInsert.push(base);
+        if (existingId) record.id = existingId;
+        
+        recordsToUpsert.push(record);
       });
+
       if (hugeVariances.length > 0) {
         if (!window.confirm(`Phát hiện ${hugeVariances.length} chênh lệch > 20%. Tiếp tục?`)) { setSaving(false); return; }
       }
       
-      // All items prepared as toInsert (since we just deleted existing ones above)
-      const allToInsert = [...toUpdate, ...toInsert] as any[];
-      if (allToInsert.length > 0) {
-        const { error } = await supabase.from('stock_audits').insert(allToInsert);
+      if (recordsToUpsert.length > 0) {
+        const { error } = await supabase.from('stock_audits').upsert(recordsToUpsert as TablesInsert<'stock_audits'>[]);
         if (error) throw error;
       }
       
       toast.success('Đã lưu!');
       fetchDailyData();
-    } catch (err) { 
+    } catch (err: any) { 
       console.error(err);
-      alert('Lỗi khi lưu!'); 
+      toast.error('Lỗi khi lưu: ' + (err?.message || err?.details || JSON.stringify(err))); 
     }
     setSaving(false);
   };
@@ -496,7 +485,7 @@ export default function Audit() {
         const record: TablesUpdate<'monthly_opening_stock'> = {
           ingredient_id: id,
           year_month: yearMonth,
-          opening_stock: val * factor,
+          opening_stock: Number(val * factor) || 0,
           notes: monthlyOpeningNotes[id] || '',
           created_by: user?.id,
           updated_at: new Date().toISOString(),
@@ -507,9 +496,9 @@ export default function Audit() {
       await supabase.from('monthly_opening_stock').upsert(upserts as TablesInsert<'monthly_opening_stock'>[]);
       toast.success(`Đã lưu tồn đầu!`);
       fetchMonthlyOpening();
-    } catch (err) { 
+    } catch (err: any) { 
       console.error(err);
-      alert('Lỗi!'); 
+      toast.error('Lỗi: ' + (err?.message || err?.details || JSON.stringify(err))); 
     }
     setSaving(false);
   };
