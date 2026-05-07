@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Tables, TablesInsert, TablesUpdate } from '../types/database.types';
 import { supabase } from '../lib/supabase';
-import { Search, Save, History, PackageOpen, ChevronLeft, ChevronRight, AlertCircle, CupSoda, Upload, Download, ClipboardCheck, FileDown, Calculator, X } from 'lucide-react';
+import { Search, Save, History, PackageOpen, ChevronLeft, ChevronRight, AlertCircle, CupSoda, Upload, Download, ClipboardCheck, FileDown, Calculator, X, Eye, EyeOff, AlertTriangle, TrendingDown } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { TeaAndCakeAuditTab } from '../components/audit/TeaAndCakeAuditTab';
 import { useAuth } from '../contexts/AuthContext';
@@ -55,6 +55,8 @@ export default function Audit() {
   const [monthlyOpeningNotes, setMonthlyOpeningNotes] = useState<Record<string, string>>({});
   const [existingMonthlyIds, setExistingMonthlyIds] = useState<Record<string, string>>({});
   const [hasMonthlyOpening, setHasMonthlyOpening] = useState(false);
+  type FilterType = 'all' | 'missing' | 'variance' | 'negative';
+  const [filterType, setFilterType] = useState<FilterType>('all');
   const [allUnits, setAllUnits] = useState<Tables<'ingredient_units'>[]>([]);
 
   const [calcModal, setCalcModal] = useState<{
@@ -65,6 +67,7 @@ export default function Audit() {
     baseUnit: string;
   } | null>(null);
   const [calcValues, setCalcValues] = useState<Record<string, string>>({});
+  const [calcBreakdowns, setCalcBreakdowns] = useState<Record<string, Record<string, string>>>({});
 
   const openCalc = (ing: Ingredient, location: 'store' | 'counter' | 'monthly') => {
     setCalcModal({
@@ -74,7 +77,7 @@ export default function Audit() {
       ingName: ing.name,
       baseUnit: ing.unit
     });
-    setCalcValues({});
+    setCalcValues(calcBreakdowns[`${location}-${ing.id}`] || {});
   };
 
   const closeCalc = () => setCalcModal(null);
@@ -87,17 +90,22 @@ export default function Audit() {
     unitsForIng.forEach(u => {
       total += (parseFloat(calcValues[u.id]) || 0) * u.conversion_factor;
     });
-    if (total > 0 || Object.values(calcValues).some(v => v !== '')) {
-      if (location === 'store') {
-        setStoreStocks(prev => ({ ...prev, [ingId]: total.toString() }));
-        setStoreUnits(prev => ({ ...prev, [ingId]: 'base' }));
-      } else if (location === 'counter') {
-        setCounterStocks(prev => ({ ...prev, [ingId]: total.toString() }));
-        setCounterUnits(prev => ({ ...prev, [ingId]: 'base' }));
-      } else if (location === 'monthly') {
-        setMonthlyOpeningInputs(prev => ({ ...prev, [ingId]: total.toString() }));
-        setMonthlyOpeningUnits(prev => ({ ...prev, [ingId]: 'base' }));
-      }
+
+    // Save breakdown
+    setCalcBreakdowns(prev => ({
+      ...prev,
+      [`${location}-${ingId}`]: { ...calcValues }
+    }));
+
+    if (location === 'store') {
+      setStoreStocks(prev => ({ ...prev, [ingId]: total.toString() }));
+      setStoreUnits(prev => ({ ...prev, [ingId]: 'base' }));
+    } else if (location === 'counter') {
+      setCounterStocks(prev => ({ ...prev, [ingId]: total.toString() }));
+      setCounterUnits(prev => ({ ...prev, [ingId]: 'base' }));
+    } else if (location === 'monthly') {
+      setMonthlyOpeningInputs(prev => ({ ...prev, [ingId]: total.toString() }));
+      setMonthlyOpeningUnits(prev => ({ ...prev, [ingId]: 'base' }));
     }
     closeCalc();
   };
@@ -292,6 +300,10 @@ export default function Audit() {
     else if (viewMode === 'history') fetchHistory();
   }, [viewMode, selectedDate, fetchDailyData, fetchHistory, fetchMonthlyOpening]);
 
+  useEffect(() => {
+    setCalcBreakdowns({});
+  }, [selectedDate]);
+
   const handleExcelImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -446,9 +458,6 @@ export default function Audit() {
           audited_by: user?.id,
         };
 
-        const existingId = existingAuditIdsRef.current[id];
-        if (existingId) record.id = existingId;
-        
         recordsToUpsert.push(record);
       });
 
@@ -457,7 +466,9 @@ export default function Audit() {
       }
       
       if (recordsToUpsert.length > 0) {
-        const { error } = await supabase.from('stock_audits').upsert(recordsToUpsert as TablesInsert<'stock_audits'>[]);
+        const { error } = await supabase
+          .from('stock_audits')
+          .upsert(recordsToUpsert as TablesInsert<'stock_audits'>[], { onConflict: 'ingredient_id,audit_date' });
         if (error) throw error;
       }
       
@@ -472,6 +483,10 @@ export default function Audit() {
 
   const handleSaveMonthlyOpening = async () => {
     const filledKeys = Object.keys(monthlyOpeningInputs).filter(k => monthlyOpeningInputs[k] !== '');
+    if (filledKeys.length === 0) {
+      toast.error('Vui lòng nhập tồn!');
+      return;
+    }
     setSaving(true);
     try {
       const upserts = filledKeys.map(id => {
@@ -482,7 +497,7 @@ export default function Audit() {
           const unit = allUnits.find(u => u.ingredient_id === id && u.unit_name === uName);
           if (unit) factor = unit.conversion_factor;
         }
-        const record: TablesUpdate<'monthly_opening_stock'> = {
+        const record: any = {
           ingredient_id: id,
           year_month: yearMonth,
           opening_stock: Number(val * factor) || 0,
@@ -490,10 +505,14 @@ export default function Audit() {
           created_by: user?.id,
           updated_at: new Date().toISOString(),
         };
-        if (existingMonthlyIds[id]) record.id = existingMonthlyIds[id];
         return record;
       });
-      await supabase.from('monthly_opening_stock').upsert(upserts as TablesInsert<'monthly_opening_stock'>[]);
+      const { error } = await supabase
+        .from('monthly_opening_stock')
+        .upsert(upserts as TablesInsert<'monthly_opening_stock'>[], { onConflict: 'ingredient_id,year_month' });
+      
+      if (error) throw error;
+
       toast.success(`Đã lưu tồn đầu!`);
       fetchMonthlyOpening();
     } catch (err: any) { 
@@ -503,9 +522,107 @@ export default function Audit() {
     setSaving(false);
   };
 
+  const handleMonthlyExcelImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const bstr = evt.target?.result;
+        const wb = XLSX.read(bstr, { type: 'binary' });
+        const wsname = wb.SheetNames[0];
+        const ws = wb.Sheets[wsname];
+        const data = XLSX.utils.sheet_to_json(ws) as Record<string, string | number>[];
+        const newInputs = { ...monthlyOpeningInputs };
+        const newNotes = { ...monthlyOpeningNotes };
+        let matchCount = 0;
+        data.forEach((row) => {
+          const id = row['Mã nguyên liệu'] || row['Ma nguyen lieu'] || row['ID'];
+          const val = row['Số tồn đầu'] || row['So ton dau'] || row['Opening Stock'];
+          const note = row['Ghi chú'] || row['Ghi chu'] || row['Note'];
+          
+          if (id) {
+            const ingId = id.toString().trim();
+            if (ingredients.some(ing => ing.id === ingId)) {
+              if (val !== undefined) newInputs[ingId] = val.toString();
+              if (note !== undefined) newNotes[ingId] = note.toString();
+              matchCount++;
+            }
+          }
+        });
+        setMonthlyOpeningInputs(newInputs);
+        setMonthlyOpeningNotes(newNotes);
+        toast.success(`Đã nhập dữ liệu tồn đầu cho ${matchCount} nguyên liệu!`);
+      } catch (err) { 
+        console.error(err);
+        toast.error('Lỗi file Excel!'); 
+      }
+      e.target.value = '';
+    };
+    reader.readAsBinaryString(file);
+  };
+
+  const downloadMonthlyTemplate = () => {
+    const templateData = ingredients.map(ing => ({
+      'Mã nguyên liệu': ing.id,
+      'Tên nguyên liệu': ing.name,
+      'Đơn vị': ing.unit,
+      'Số tồn đầu': '',
+      'Ghi chú': ''
+    }));
+    const ws = XLSX.utils.json_to_sheet(templateData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Ton_Dau");
+    XLSX.writeFile(wb, `Mau_Nhap_Ton_Dau_${yearMonth}.xlsx`);
+  };
+
   const filtered = ingredients.filter(ing => {
     const matchSearch = ing.name.toLowerCase().includes(search.toLowerCase());
     const matchCat = selectedCategory ? ing.ingredient_categories?.name === selectedCategory : true;
+    
+    if (filterType === 'all') return matchSearch && matchCat;
+
+    const opening = openingStockMap[ing.id] ?? 0;
+    const daily = dailyTx[ing.id] || { in: 0, out: 0 };
+    const theoretical = opening + daily.in - daily.out;
+    
+    const storeVal = storeStocks[ing.id] || '';
+    const counterVal = counterStocks[ing.id] || '';
+    const hasInput = storeVal !== '' || counterVal !== '';
+
+    if (filterType === 'missing') {
+      return matchSearch && matchCat && !hasInput;
+    }
+
+    // Need actual for variance and negative
+    const storeIn = parseFloat(storeVal) || 0;
+    const sUnit = storeUnits[ing.id] || 'base';
+    let sFactor = 1;
+    if (sUnit !== 'base') {
+      const unit = allUnits.find(u => u.ingredient_id === ing.id && u.unit_name === sUnit);
+      if (unit) sFactor = unit.conversion_factor;
+    }
+    const store = storeIn * sFactor;
+    const counterIn = parseFloat(counterVal) || 0;
+    const cUnit = counterUnits[ing.id] || 'base';
+    let cFactor = 1;
+    if (cUnit !== 'base') {
+      const unit = allUnits.find(u => u.ingredient_id === ing.id && u.unit_name === cUnit);
+      if (unit) cFactor = unit.conversion_factor;
+    }
+    const counter = counterIn * cFactor;
+    const actual = store + counter;
+
+    if (filterType === 'negative') {
+      return matchSearch && matchCat && hasInput && actual < (theoretical - 0.001);
+    }
+
+    if (filterType === 'variance') {
+      const isHigh = theoretical > 0 && Math.abs(actual - theoretical) > (theoretical * 0.2);
+      const hasDiff = Math.abs(actual - theoretical) > 0.001;
+      return matchSearch && matchCat && hasInput && (isHigh || (theoretical === 0 && actual > 0));
+    }
+
     return matchSearch && matchCat;
   });
 
@@ -526,6 +643,13 @@ export default function Audit() {
           </div>
           <div className="col-12 col-md-auto">
             <div className="flex gap-2">
+              <div className="flex items-center gap-2 me-2">
+                <button onClick={downloadMonthlyTemplate} className="w-10 h-10 flex items-center justify-center bg-white border border-gray-100 text-gray-400 rounded-xl hover:text-teal-600 hover:border-teal-200 transition-all premium-shadow" title="Mẫu Excel Tồn Đầu"><Download size={18} /></button>
+                <label className="w-10 h-10 flex items-center justify-center bg-white border border-gray-100 text-gray-400 rounded-xl hover:text-teal-600 hover:border-teal-200 transition-all premium-shadow cursor-pointer mb-0">
+                  <Upload size={18} />
+                  <input type="file" accept=".xlsx, .xls" onChange={handleMonthlyExcelImport} className="d-none" />
+                </label>
+              </div>
               <button onClick={() => setViewMode('daily')} className="btn btn-teal-ghost rounded-xl transition-all">← Quay lại</button>
               <button onClick={handleSaveMonthlyOpening} disabled={saving} className="btn bg-teal-600 text-white rounded-xl font-black px-4 shadow-lg shadow-teal-100 border-0 flex items-center gap-2">
                 <Save size={16} /> {saving ? '...' : 'LƯU TỒN ĐẦU'}
@@ -739,6 +863,13 @@ export default function Audit() {
                     const next = format(new Date(new Date(selectedDate).getTime() + 86400000), 'yyyy-MM-dd');
                     if (next <= todayStr) setSelectedDate(next);
                   }} disabled={selectedDate >= todayStr} className="p-2 text-teal-600 hover:bg-teal-50 rounded-xl disabled:opacity-30 transition-all"><ChevronRight size={20} /></button>
+             </div>
+
+             <div className="flex items-center gap-1 bg-white p-1 rounded-2xl shadow-sm border border-gray-100">
+                <button onClick={() => setFilterType('all')} className={`p-2 rounded-xl transition-all ${filterType === 'all' ? 'bg-teal-600 text-white shadow-md' : 'text-gray-400 hover:bg-gray-50'}`} title="Tất cả"><Eye size={18} /></button>
+                <button onClick={() => setFilterType('missing')} className={`p-2 rounded-xl transition-all ${filterType === 'missing' ? 'bg-orange-500 text-white shadow-md' : 'text-gray-400 hover:bg-gray-50'}`} title="Chưa kiểm"><EyeOff size={18} /></button>
+                <button onClick={() => setFilterType('variance')} className={`p-2 rounded-xl transition-all ${filterType === 'variance' ? 'bg-red-500 text-white shadow-md' : 'text-gray-400 hover:bg-gray-50'}`} title="Sai lệch cao"><AlertTriangle size={18} /></button>
+                <button onClick={() => setFilterType('negative')} className={`p-2 rounded-xl transition-all ${filterType === 'negative' ? 'bg-purple-600 text-white shadow-md' : 'text-gray-400 hover:bg-gray-50'}`} title="Chênh lệch âm (Hao hụt)"><TrendingDown size={18} /></button>
              </div>
 
              <button onClick={handleSaveAudit} disabled={saving || filledCount === 0 || !canEdit} className="btn bg-teal-600 text-white hover:bg-teal-700 px-6 py-3 rounded-2xl font-black shadow-lg shadow-teal-100 border-0 flex items-center gap-2 disabled:bg-gray-200 disabled:shadow-none">

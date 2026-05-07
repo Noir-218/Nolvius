@@ -228,7 +228,7 @@ export const TeaAndCakeAuditTab: React.FC<Props> = ({ selectedDate }) => {
       
       const { error: teaErr } = await supabase.from('tea_cake_audits').upsert(
         allLotsToSave.map(l => ({
-          ...(l.id ? { id: l.id } : {}),
+          id: l.id || crypto.randomUUID(),
           audit_date: selectedDate,
           item_type: l.item_type,
           ingredient_id: l.ingredient_id,
@@ -357,11 +357,10 @@ export const TeaAndCakeAuditTab: React.FC<Props> = ({ selectedDate }) => {
           notes: existing?.notes ?? '',
           audited_by: user?.id,
         };
-        if (existing?.id) record.id = existing.id;
         return record;
       });
 
-      const { error: upsertErr } = await supabase.from('stock_audits').upsert(recordsToUpsert as TablesInsert<'stock_audits'>[]);
+      const { error: upsertErr } = await supabase.from('stock_audits').upsert(recordsToUpsert as TablesInsert<'stock_audits'>[], { onConflict: 'ingredient_id,audit_date' });
       if (upsertErr) throw upsertErr;
 
       toast.success('Đã lưu thành công! Cột Kho trong phiếu kiểm kê đã được cập nhật.');

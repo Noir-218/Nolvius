@@ -40,6 +40,8 @@ interface OrderType {
 // ─── Periods ──────────────────────────────────────────────────────────────────
 
 const PERIODS = [
+  { label: '1 ngày', days: 1 },
+  { label: '3 ngày', days: 3 },
   { label: '7 ngày', days: 7 },
   { label: '14 ngày', days: 14 },
   { label: '30 ngày', days: 30 },
