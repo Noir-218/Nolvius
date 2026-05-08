@@ -671,7 +671,7 @@ export default function Audit() {
            <div className="row g-3">
               <div className="col-md-8">
                  <div className="relative">
-                    <input type="text" placeholder="Tìm nguyên liệu..." value={search} onChange={e => setSearch(e.target.value)} className="w-full pl-11 pr-4 py-3 bg-gray-50 border-0 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-teal-500/20" />
+                    <input id="main-search-input" type="text" placeholder="Tìm nguyên liệu..." value={search} onChange={e => setSearch(e.target.value)} className="w-full pl-11 pr-4 py-3 bg-gray-50 border-0 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-teal-500/20" />
                     <Search className="absolute left-4 top-3.5 text-gray-400" size={18} />
                  </div>
               </div>
@@ -915,7 +915,7 @@ export default function Audit() {
         <div className="row g-3 align-items-center">
           <div className="col-12 col-md-8">
              <div className="relative">
-                <input type="text" placeholder="Tìm tên nguyên liệu..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-full pl-11 pr-4 py-3 bg-gray-50 border-0 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-teal-500/20 focus:bg-white transition-all outline-none" />
+                <input id="main-search-input" type="text" placeholder="Tìm tên nguyên liệu..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-full pl-11 pr-4 py-3 bg-gray-50 border-0 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-teal-500/20 focus:bg-white transition-all outline-none" />
                 <Search className="absolute left-4 top-3.5 text-gray-400" size={18} />
              </div>
           </div>

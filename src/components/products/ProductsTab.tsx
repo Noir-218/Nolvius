@@ -206,6 +206,7 @@ export const ProductsTab = () => {
               <Search size={18} />
             </span>
             <input
+              id="main-search-input"
               type="text"
               placeholder="Tìm kiếm SP..."
               value={search}

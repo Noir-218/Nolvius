@@ -597,6 +597,7 @@ export default function Transactions() {
                   <div className="input-group input-group-sm shadow-sm">
                     <span className="input-group-text bg-white border-end-0 text-muted"><Search size={14} /></span>
                     <input 
+                      id="main-search-input"
                       type="text" 
                       placeholder="Gõ tên nguyên liệu để xem tổng hợp..." 
                       value={combinedSearchTerm} 

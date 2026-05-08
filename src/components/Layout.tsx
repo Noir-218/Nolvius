@@ -53,6 +53,25 @@ const Layout = () => {
     localStorage.setItem('sidebar-collapsed', JSON.stringify(isSidebarCollapsed));
   }, [isSidebarCollapsed]);
 
+  // Global Ctrl + F shortcut
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Check for Ctrl + F or Cmd + F
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
+        const searchInput = document.getElementById('main-search-input') as HTMLInputElement;
+        if (searchInput) {
+          e.preventDefault();
+          searchInput.focus();
+          // Optional: select text for easier re-typing
+          searchInput.select();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   if (loading) {
     return <div className="h-screen flex items-center justify-center bg-gray-50"><div className="text-gray-500">Đang tải dữ liệu...</div></div>;
   }

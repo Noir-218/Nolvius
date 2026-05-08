@@ -307,6 +307,7 @@ export const IngredientsTab = () => {
                   <Search size={18} className="text-muted" />
                 </span>
                 <input
+                  id="main-search-input"
                   type="text"
                   placeholder="Tìm kiếm nguyên liệu..."
                   value={search}

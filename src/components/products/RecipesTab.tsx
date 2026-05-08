@@ -95,6 +95,7 @@ export const RecipesTab = () => {
           <div className="input-group input-group-sm mb-2 shadow-sm">
             <span className="input-group-text bg-white border-end-0 text-muted"><Search size={14} /></span>
             <input
+              id="main-search-input"
               type="text" 
               placeholder="Tìm kiếm SP..." 
               value={search} 

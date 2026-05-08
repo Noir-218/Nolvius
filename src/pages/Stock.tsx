@@ -299,6 +299,7 @@ const Stock = () => {
           <div className="col-12 col-lg-4">
              <div className="relative">
                 <input
+                  id="main-search-input"
                   type="text"
                   placeholder="Tìm tên nguyên liệu..."
                   value={search}
