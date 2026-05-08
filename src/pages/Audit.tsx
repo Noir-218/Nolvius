@@ -57,6 +57,7 @@ export default function Audit() {
   const [hasMonthlyOpening, setHasMonthlyOpening] = useState(false);
   type FilterType = 'all' | 'missing' | 'variance' | 'negative';
   const [filterType, setFilterType] = useState<FilterType>('all');
+  const [activeId, setActiveId] = useState<string | null>(null);
   const [allUnits, setAllUnits] = useState<Tables<'ingredient_units'>[]>([]);
 
   const [calcModal, setCalcModal] = useState<{
@@ -588,9 +589,15 @@ export default function Audit() {
     
     const storeVal = storeStocks[ing.id] || '';
     const counterVal = counterStocks[ing.id] || '';
-    const hasInput = storeVal !== '' || counterVal !== '';
+    const monthlyVal = monthlyOpeningInputs[ing.id] || '';
+    
+    const hasInput = viewMode === 'opening' 
+      ? monthlyVal !== '' 
+      : (storeVal !== '' || counterVal !== '');
 
     if (filterType === 'missing') {
+      // Keep item visible if it's currently being edited or has the calculator open
+      if (ing.id === activeId || calcModal?.ingId === ing.id) return true;
       return matchSearch && matchCat && !hasInput;
     }
 
@@ -614,10 +621,12 @@ export default function Audit() {
     const actual = store + counter;
 
     if (filterType === 'negative') {
+      if (ing.id === activeId || calcModal?.ingId === ing.id) return true;
       return matchSearch && matchCat && hasInput && actual < (theoretical - 0.001);
     }
 
     if (filterType === 'variance') {
+      if (ing.id === activeId || calcModal?.ingId === ing.id) return true;
       const isHigh = theoretical > 0 && Math.abs(actual - theoretical) > (theoretical * 0.2);
       const hasDiff = Math.abs(actual - theoretical) > 0.001;
       return matchSearch && matchCat && hasInput && (isHigh || (theoretical === 0 && actual > 0));
@@ -696,7 +705,7 @@ export default function Audit() {
                     <td className="px-4 py-3 border-gray-50">
                       <div className="flex items-center justify-center gap-1 mx-auto" style={{maxWidth: '240px'}}>
                         <div className="flex items-center flex-1 gap-1 bg-white border border-gray-100 rounded-xl px-2">
-                          <input type="number" value={monthlyOpeningInputs[ing.id] || ''} onChange={e => setMonthlyOpeningInputs(prev => ({ ...prev, [ing.id]: e.target.value }))} className="w-full text-end border-0 font-black text-sm bg-transparent h-9 outline-none" placeholder="0" />
+                          <input type="number" value={monthlyOpeningInputs[ing.id] || ''} onFocus={() => setActiveId(ing.id)} onBlur={() => setActiveId(null)} onChange={e => setMonthlyOpeningInputs(prev => ({ ...prev, [ing.id]: e.target.value }))} onWheel={e => (e.target as HTMLInputElement).blur()} onKeyDown={e => { if (e.key === 'ArrowUp' || e.key === 'ArrowDown') e.preventDefault(); }} className="w-full text-end border-0 font-black text-sm bg-transparent h-9 outline-none" placeholder="0" />
                           <select value={monthlyOpeningUnits[ing.id] || 'base'} onChange={e => setMonthlyOpeningUnits(prev => ({ ...prev, [ing.id]: e.target.value }))} className="border-0 bg-transparent text-[9px] font-black text-gray-400 uppercase w-12 outline-none">
                              <option value="base">{ing.unit}</option>
                              {allUnits.filter(u => u.ingredient_id === ing.id).map(u => (<option key={u.id} value={u.unit_name}>{u.unit_name}</option>))}
@@ -994,7 +1003,7 @@ export default function Audit() {
                       <td className="px-2 py-4 border-gray-50 min-w-[120px]">
                         <div className="flex items-center gap-1">
                           <div className="flex-1 flex items-center gap-1 bg-white border border-gray-100 rounded-xl px-2">
-                             <input type="number" step="0.000001" value={storeVal} disabled={!canEdit} onChange={e => setStoreStocks(prev => ({ ...prev, [ing.id]: e.target.value }))} className="w-full text-end border-0 font-black text-sm bg-transparent h-9 outline-none min-w-[40px]" placeholder="0" />
+                             <input type="number" step="0.000001" value={storeVal} disabled={!canEdit} onFocus={() => setActiveId(ing.id)} onBlur={() => setActiveId(null)} onChange={e => setStoreStocks(prev => ({ ...prev, [ing.id]: e.target.value }))} onWheel={e => (e.target as HTMLInputElement).blur()} onKeyDown={e => { if (e.key === 'ArrowUp' || e.key === 'ArrowDown') e.preventDefault(); }} className="w-full text-end border-0 font-black text-sm bg-transparent h-9 outline-none min-w-[40px]" placeholder="0" />
                              <select value={storeUnits[ing.id] || 'base'} disabled={!canEdit} onChange={e => setStoreUnits(prev => ({ ...prev, [ing.id]: e.target.value }))} className="border-0 bg-transparent text-[9px] font-black text-gray-400 uppercase w-12 outline-none">
                                <option value="base">{ing.unit}</option>
                                {allUnits.filter(u => u.ingredient_id === ing.id).map(u => (<option key={u.id} value={u.unit_name}>{u.unit_name}</option>))}
@@ -1010,7 +1019,7 @@ export default function Audit() {
                       <td className="px-2 py-4 border-gray-50 min-w-[120px]">
                         <div className="flex items-center gap-1">
                           <div className="flex-1 flex items-center gap-1 bg-teal-50/50 border border-teal-100 rounded-xl px-2">
-                             <input type="number" step="0.000001" value={counterVal} disabled={!canEdit} onChange={e => setCounterStocks(prev => ({ ...prev, [ing.id]: e.target.value }))} className="w-full text-end border-0 font-black text-sm bg-transparent h-9 outline-none min-w-[40px]" placeholder="0" />
+                             <input type="number" step="0.000001" value={counterVal} disabled={!canEdit} onFocus={() => setActiveId(ing.id)} onBlur={() => setActiveId(null)} onChange={e => setCounterStocks(prev => ({ ...prev, [ing.id]: e.target.value }))} onWheel={e => (e.target as HTMLInputElement).blur()} onKeyDown={e => { if (e.key === 'ArrowUp' || e.key === 'ArrowDown') e.preventDefault(); }} className="w-full text-end border-0 font-black text-sm bg-transparent h-9 outline-none min-w-[40px]" placeholder="0" />
                              <select value={counterUnits[ing.id] || 'base'} disabled={!canEdit} onChange={e => setCounterUnits(prev => ({ ...prev, [ing.id]: e.target.value }))} className="border-0 bg-transparent text-[9px] font-black text-gray-400 uppercase w-12 outline-none">
                                <option value="base">{ing.unit}</option>
                                {allUnits.filter(u => u.ingredient_id === ing.id).map(u => (<option key={u.id} value={u.unit_name}>{u.unit_name}</option>))}
@@ -1078,6 +1087,8 @@ export default function Audit() {
                         step="0.000001"
                         value={calcValues[u.id] || ''}
                         onChange={e => setCalcValues(prev => ({ ...prev, [u.id]: e.target.value }))}
+                        onWheel={e => (e.target as HTMLInputElement).blur()}
+                        onKeyDown={e => { if (e.key === 'ArrowUp' || e.key === 'ArrowDown') e.preventDefault(); }}
                         placeholder="0"
                         className="w-full bg-gray-50 border border-gray-100 rounded-xl px-3 py-2 text-end font-black text-sm text-teal-700 outline-none focus:ring-2 focus:ring-teal-500/20 transition-all"
                       />
@@ -1098,6 +1109,8 @@ export default function Audit() {
                       step="0.000001"
                       value={calcValues['base'] || ''}
                       onChange={e => setCalcValues(prev => ({ ...prev, 'base': e.target.value }))}
+                      onWheel={e => (e.target as HTMLInputElement).blur()}
+                      onKeyDown={e => { if (e.key === 'ArrowUp' || e.key === 'ArrowDown') e.preventDefault(); }}
                       placeholder="0"
                       className="w-full bg-gray-50 border border-gray-100 rounded-xl px-3 py-2 text-end font-black text-sm text-teal-700 outline-none focus:ring-2 focus:ring-teal-500/20 transition-all"
                     />

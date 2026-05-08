@@ -55,6 +55,7 @@ interface LineItem {
   unit_name: string; // The name of the selected unit
   searchTerm?: string;
   isDropdownOpen?: boolean;
+  selectedIndex?: number;
 }
 
 const emptyLine = (): LineItem => ({
@@ -64,6 +65,7 @@ const emptyLine = (): LineItem => ({
   unit_name: 'base',
   searchTerm: '',
   isDropdownOpen: false,
+  selectedIndex: -1,
 });
 
 export default function Transactions() {
@@ -84,6 +86,15 @@ export default function Transactions() {
   const [filterBranch, setFilterBranch] = useState<string>('');
   const [filterStatus, setFilterStatus] = useState<string>('');
   const [search, setSearch] = useState<string>('');
+  const [combinedSearchTerm, setCombinedSearchTerm] = useState<string>('');
+  const [isCombinedDropdownOpen, setIsCombinedDropdownOpen] = useState(false);
+  const [combinedSelectedIndex, setCombinedSelectedIndex] = useState(-1);
+  const [selectedIngSummary, setSelectedIngSummary] = useState<{
+    id: string;
+    name: string;
+    unit: string;
+    stats: Record<string, number>;
+  } | null>(null);
 
   // Modal / Form
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -470,6 +481,35 @@ export default function Transactions() {
     )
     : groupedTransactions;
 
+  const handleSelectCombined = (ing: any) => {
+    setCombinedSearchTerm(ing.name);
+    setSearch(ing.name);
+    setIsCombinedDropdownOpen(false);
+
+    // Calculate summary
+    const ingTransactions = transactions.filter(t => t.ingredient_id === ing.id);
+    const stats: Record<string, number> = {
+      'IN': 0,
+      'IN_TRANSFER': 0,
+      'OUT': 0,
+      'WASTE': 0,
+      'SALES_USAGE': 0
+    };
+
+    ingTransactions.forEach(t => {
+      if (stats[t.type] !== undefined) {
+        stats[t.type] += Math.abs(t.quantity);
+      }
+    });
+
+    setSelectedIngSummary({
+      id: ing.id,
+      name: ing.name,
+      unit: ing.unit,
+      stats
+    });
+  };
+
   return (
     <div className="container-fluid py-4">
       <div className="row g-3 align-items-center mb-4">
@@ -552,14 +592,135 @@ export default function Transactions() {
                     </optgroup>
                   </select>
                 </div>
-                <div className="col-12 col-md flex-grow-1">
-                  <label className="form-label mb-1 text-uppercase fw-black text-secondary" style={{ fontSize: '10px' }}>Tìm nhanh</label>
+                <div className="col-12 col-md flex-grow-1 position-relative">
+                  <label className="form-label mb-1 text-uppercase fw-black text-secondary" style={{ fontSize: '10px' }}>Tìm tổng hợp nguyên liệu</label>
                   <div className="input-group input-group-sm shadow-sm">
                     <span className="input-group-text bg-white border-end-0 text-muted"><Search size={14} /></span>
-                    <input type="text" placeholder="Tìm phiếu, nguyên liệu..." value={search} onChange={e => setSearch(e.target.value)} className="form-control border-start-0 ps-0" />
+                    <input 
+                      type="text" 
+                      placeholder="Gõ tên nguyên liệu để xem tổng hợp..." 
+                      value={combinedSearchTerm} 
+                      onChange={e => {
+                        setCombinedSearchTerm(e.target.value);
+                        setIsCombinedDropdownOpen(true);
+                        setCombinedSelectedIndex(-1);
+                        if (!e.target.value) {
+                          setSearch('');
+                          setSelectedIngSummary(null);
+                        }
+                      }} 
+                      onFocus={() => setIsCombinedDropdownOpen(true)}
+                      onKeyDown={(e) => {
+                        const filteredIngs = ingredients.filter(i => i.name.toLowerCase().includes(combinedSearchTerm.toLowerCase()));
+                        if (e.key === 'ArrowDown') {
+                          e.preventDefault();
+                          setCombinedSelectedIndex(prev => (prev + 1) % filteredIngs.length);
+                        } else if (e.key === 'ArrowUp') {
+                          e.preventDefault();
+                          setCombinedSelectedIndex(prev => (prev - 1 + filteredIngs.length) % filteredIngs.length);
+                        } else if (e.key === 'Enter' || e.key === 'Tab') {
+                          if (combinedSelectedIndex >= 0 && combinedSelectedIndex < filteredIngs.length) {
+                            e.preventDefault();
+                            const ing = filteredIngs[combinedSelectedIndex];
+                            handleSelectCombined(ing);
+                          }
+                        }
+                      }}
+                      className="form-control border-start-0 ps-0 fw-bold" 
+                    />
+                    {combinedSearchTerm && (
+                      <button 
+                        className="btn btn-outline-secondary border-start-0 border-end border-top border-bottom" 
+                        onClick={() => {
+                          setCombinedSearchTerm('');
+                          setSearch('');
+                          setSelectedIngSummary(null);
+                        }}
+                      >
+                        <X size={14} />
+                      </button>
+                    )}
                   </div>
+
+                  {/* Dropdown for Combined Search */}
+                  {isCombinedDropdownOpen && combinedSearchTerm && (
+                    <div className="position-absolute w-100 mt-1 shadow-lg bg-white rounded-3 overflow-hidden border" style={{ zIndex: 1050 }}>
+                      <div className="list-group list-group-flush" style={{ maxHeight: '200px', overflowY: 'auto' }}>
+                        {ingredients
+                          .filter(i => i.name.toLowerCase().includes(combinedSearchTerm.toLowerCase()))
+                          .map((i, idx) => (
+                            <button
+                              key={i.id}
+                              type="button"
+                              className={`list-group-item list-group-item-action border-0 py-2 px-3 small d-flex justify-content-between align-items-center ${combinedSelectedIndex === idx ? 'bg-primary text-white' : ''}`}
+                              onClick={() => handleSelectCombined(i)}
+                            >
+                              <div>
+                                <span className="fw-bold">{i.name}</span>
+                                <div className={`${combinedSelectedIndex === idx ? 'text-white-50' : 'text-muted'}`} style={{ fontSize: '10px' }}>{i.ingredient_categories?.name || 'Không có danh mục'}</div>
+                              </div>
+                              <span className={`badge rounded-pill ${combinedSelectedIndex === idx ? 'bg-white text-primary' : 'bg-light text-secondary'}`}>{i.unit}</span>
+                            </button>
+                          ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
+
+              {/* Summary Card for Combined Search */}
+              {selectedIngSummary && (
+                <div className="card border-0 bg-primary bg-opacity-10 rounded-4 p-3 p-md-4 mb-4 shadow-sm border-start border-4 border-primary animate__animated animate__fadeIn">
+                  <div className="row g-3 align-items-center">
+                    <div className="col-12 col-md-4">
+                      <div className="d-flex align-items-center gap-3">
+                        <div className="bg-primary text-white p-3 rounded-3 shadow-sm">
+                          <Plus size={24} />
+                        </div>
+                        <div>
+                          <h6 className="fw-black text-primary text-uppercase tracking-widest mb-0" style={{ fontSize: '11px' }}>Tổng hợp giao dịch</h6>
+                          <h4 className="fw-black text-dark mb-0">{selectedIngSummary.name}</h4>
+                          <span className="badge bg-white text-primary border border-primary-subtle rounded-pill small">{selectedIngSummary.unit}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="col-12 col-md-8">
+                      <div className="row g-2">
+                        <div className="col-4 col-md">
+                          <div className="bg-white p-2 rounded-3 text-center shadow-sm h-100">
+                            <div className="text-uppercase fw-bold text-muted mb-1" style={{ fontSize: '9px' }}>Nhập hàng</div>
+                            <div className="fw-black text-success small">{selectedIngSummary.stats['IN'].toLocaleString()}</div>
+                          </div>
+                        </div>
+                        <div className="col-4 col-md">
+                          <div className="bg-white p-2 rounded-3 text-center shadow-sm h-100 border-start border-3 border-info">
+                            <div className="text-uppercase fw-bold text-muted mb-1" style={{ fontSize: '9px' }}>Nhập chuyển</div>
+                            <div className="fw-black text-info small">{selectedIngSummary.stats['IN_TRANSFER'].toLocaleString()}</div>
+                          </div>
+                        </div>
+                        <div className="col-4 col-md">
+                          <div className="bg-white p-2 rounded-3 text-center shadow-sm h-100 border-start border-3 border-warning">
+                            <div className="text-uppercase fw-bold text-muted mb-1" style={{ fontSize: '9px' }}>Xuất chuyển</div>
+                            <div className="fw-black text-warning small">{selectedIngSummary.stats['OUT'].toLocaleString()}</div>
+                          </div>
+                        </div>
+                        <div className="col-4 col-md">
+                          <div className="bg-white p-2 rounded-3 text-center shadow-sm h-100 border-start border-3 border-danger">
+                            <div className="text-uppercase fw-bold text-muted mb-1" style={{ fontSize: '9px' }}>Hủy hàng</div>
+                            <div className="fw-black text-danger small">{selectedIngSummary.stats['WASTE'].toLocaleString()}</div>
+                          </div>
+                        </div>
+                        <div className="col-4 col-md">
+                          <div className="bg-white p-2 rounded-3 text-center shadow-sm h-100 border-start border-3 border-primary">
+                            <div className="text-uppercase fw-bold text-muted mb-1" style={{ fontSize: '9px' }}>Bán hàng</div>
+                            <div className="fw-black text-primary small">{selectedIngSummary.stats['SALES_USAGE'].toLocaleString()}</div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Transaction Table */}
               <div className="table-responsive rounded-4 border shadow-sm">
@@ -833,6 +994,8 @@ export default function Transactions() {
                       placeholder="0" 
                       value={productQty} 
                       onChange={e => setProductQty(e.target.value)}
+                      onWheel={e => (e.target as HTMLInputElement).blur()}
+                      onKeyDown={e => { if (e.key === 'ArrowUp' || e.key === 'ArrowDown') e.preventDefault(); }}
                     />
                   </div>
                   <div className="col-4 col-md-1 d-flex align-items-end">
@@ -959,7 +1122,7 @@ export default function Transactions() {
                               onChange={(e) => {
                                 const term = e.target.value;
                                 setLines(prev => prev.map(l => 
-                                  l.id === line.id ? { ...l, searchTerm: term, isDropdownOpen: true, ingredient_id: term === '' ? '' : l.ingredient_id } : l
+                                  l.id === line.id ? { ...l, searchTerm: term, isDropdownOpen: true, ingredient_id: term === '' ? '' : l.ingredient_id, selectedIndex: -1 } : l
                                 ));
                               }}
                               onFocus={() => {
@@ -974,6 +1137,32 @@ export default function Transactions() {
                                   ));
                                 }, 200);
                               }}
+                              onKeyDown={(e) => {
+                                if (!line.isDropdownOpen) return;
+                                const filtered = ingredients.filter(i => i.name.toLowerCase().includes((line.searchTerm || '').toLowerCase()));
+                                if (filtered.length === 0) return;
+
+                                if (e.key === 'ArrowDown') {
+                                  e.preventDefault();
+                                  setLines(prev => prev.map(l => 
+                                    l.id === line.id ? { ...l, selectedIndex: ((l.selectedIndex ?? -1) + 1) % filtered.length } : l
+                                  ));
+                                } else if (e.key === 'ArrowUp') {
+                                  e.preventDefault();
+                                  setLines(prev => prev.map(l => 
+                                    l.id === line.id ? { ...l, selectedIndex: ((l.selectedIndex ?? -1) - 1 + filtered.length) % filtered.length } : l
+                                  ));
+                                } else if (e.key === 'Enter' || e.key === 'Tab') {
+                                  const idx = line.selectedIndex ?? -1;
+                                  if (idx >= 0 && idx < filtered.length) {
+                                    e.preventDefault();
+                                    const item = filtered[idx];
+                                    setLines(prev => prev.map(l => 
+                                      l.id === line.id ? { ...l, ingredient_id: item.id, searchTerm: item.name, isDropdownOpen: false, unit_name: 'base', selectedIndex: -1 } : l
+                                    ));
+                                  }
+                                }
+                              }}
                             />
                           </div>
                           
@@ -983,22 +1172,22 @@ export default function Transactions() {
                               <div className="list-group list-group-flush" style={{ maxHeight: '200px', overflowY: 'auto' }}>
                                 {ingredients
                                   .filter(i => i.name.toLowerCase().includes((line.searchTerm || '').toLowerCase()))
-                                  .map(i => (
+                                  .map((i, idx) => (
                                     <button
                                       key={i.id}
                                       type="button"
-                                      className="list-group-item list-group-item-action border-0 py-2 px-3 small d-flex justify-content-between align-items-center"
+                                      className={`list-group-item list-group-item-action border-0 py-2 px-3 small d-flex justify-content-between align-items-center ${line.selectedIndex === idx ? 'bg-primary text-white' : ''}`}
                                       onClick={() => {
                                         setLines(prev => prev.map(l => 
-                                          l.id === line.id ? { ...l, ingredient_id: i.id, searchTerm: i.name, isDropdownOpen: false, unit_name: 'base' } : l
+                                          l.id === line.id ? { ...l, ingredient_id: i.id, searchTerm: i.name, isDropdownOpen: false, unit_name: 'base', selectedIndex: -1 } : l
                                         ));
                                       }}
                                     >
                                       <div>
                                         <span className="fw-bold">{i.name}</span>
-                                        <div className="text-muted" style={{ fontSize: '10px' }}>{i.ingredient_categories?.name || 'Không có danh mục'}</div>
+                                        <div className={`${line.selectedIndex === idx ? 'text-white-50' : 'text-muted'}`} style={{ fontSize: '10px' }}>{i.ingredient_categories?.name || 'Không có danh mục'}</div>
                                       </div>
-                                      <span className="badge bg-light text-secondary rounded-pill">{i.unit}</span>
+                                      <span className={`badge rounded-pill ${line.selectedIndex === idx ? 'bg-white text-primary' : 'bg-light text-secondary'}`}>{i.unit}</span>
                                     </button>
                                   ))}
                                 {ingredients.filter(i => i.name.toLowerCase().includes((line.searchTerm || '').toLowerCase())).length === 0 && (
@@ -1018,6 +1207,8 @@ export default function Transactions() {
                             onChange={e => setLines(prev => prev.map(l =>
                               l.id === line.id ? { ...l, quantity: e.target.value } : l
                             ))}
+                            onWheel={e => (e.target as HTMLInputElement).blur()}
+                            onKeyDown={e => { if (e.key === 'ArrowUp' || e.key === 'ArrowDown') e.preventDefault(); }}
                             placeholder="0"
                           />
                         </div>

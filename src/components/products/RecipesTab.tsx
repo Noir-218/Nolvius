@@ -313,6 +313,8 @@ export const RecipesTab = () => {
                             newF[idx].quantity = e.target.value;
                             setFormData(newF);
                           }}
+                          onWheel={e => (e.target as HTMLInputElement).blur()}
+                          onKeyDown={e => { if (e.key === 'ArrowUp' || e.key === 'ArrowDown') e.preventDefault(); }}
                           className="form-control text-end fw-black text-primary"
                           placeholder="Số lượng"
                         />

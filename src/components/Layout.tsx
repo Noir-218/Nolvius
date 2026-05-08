@@ -38,11 +38,20 @@ const Layout = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
+    const saved = localStorage.getItem('sidebar-collapsed');
+    return saved ? JSON.parse(saved) : false;
+  });
 
   // Close menu when route changes
   useEffect(() => {
     setIsMenuOpen(false);
   }, [location.pathname]);
+
+  // Persist sidebar state
+  useEffect(() => {
+    localStorage.setItem('sidebar-collapsed', JSON.stringify(isSidebarCollapsed));
+  }, [isSidebarCollapsed]);
 
   if (loading) {
     return <div className="h-screen flex items-center justify-center bg-gray-50"><div className="text-gray-500">Đang tải dữ liệu...</div></div>;
@@ -58,6 +67,7 @@ const Layout = () => {
   };
 
   const toggleMenu = () => setIsMenuOpen(!isMenuOpen);
+  const toggleSidebar = () => setIsSidebarCollapsed(!isSidebarCollapsed);
 
   const filteredNavItems = navItems.filter(item =>
     !item.roles || item.roles.includes(role || 'staff')
@@ -83,15 +93,18 @@ const Layout = () => {
 
       {/* Sidebar */}
       <aside className={`
-        fixed lg:static inset-y-0 left-0 w-64 bg-white border-r border-gray-100 flex flex-col shadow-xl lg:shadow-none z-30 transition-transform duration-300 ease-in-out
-        ${isMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+        fixed lg:static inset-y-0 left-0 bg-white border-r border-gray-100 flex flex-col shadow-xl lg:shadow-none z-30 transition-all duration-300 ease-in-out
+        ${isSidebarCollapsed ? 'lg:w-20' : 'lg:w-64'}
+        ${isMenuOpen ? 'translate-x-0 w-64' : '-translate-x-full lg:translate-x-0'}
       `}>
-        <div className="h-16 flex items-center justify-between px-6 border-b border-gray-100 bg-teal-800">
-          <div className="flex items-center gap-2">
-            <div className="bg-white/10 p-1.5 rounded-lg">
+        <div className={`h-16 flex items-center px-6 border-b border-gray-100 bg-teal-800 transition-all duration-300 ${isSidebarCollapsed ? 'lg:px-4 justify-center' : 'justify-between'}`}>
+          <div className="flex items-center gap-2 overflow-hidden">
+            <div className="bg-white/10 p-1.5 rounded-lg shrink-0">
               <Coffee size={20} className="text-white" />
             </div>
-            <h1 className="text-sm font-black text-white tracking-widest uppercase truncate">NVC MANAGER</h1>
+            <h1 className={`text-sm font-black text-white tracking-widest uppercase truncate transition-all duration-300 ${isSidebarCollapsed ? 'lg:opacity-0 lg:w-0' : 'opacity-100 w-auto'}`}>
+              NVC MANAGER
+            </h1>
           </div>
           <button
             onClick={() => setIsMenuOpen(false)}
@@ -102,46 +115,57 @@ const Layout = () => {
         </div>
         
         <nav className="flex-1 overflow-y-auto py-6 scrollbar-hide">
-          <p className="px-6 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-4">Danh mục chính</p>
+          <p className={`px-6 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-4 transition-all duration-300 whitespace-nowrap overflow-hidden ${isSidebarCollapsed ? 'lg:opacity-0 lg:h-0 lg:mb-0' : 'opacity-100'}`}>
+            Danh mục chính
+          </p>
           <ul className="space-y-1 px-3 list-none">
             {filteredNavItems.map((item) => (
               <li key={item.path} className="list-none">
                 <NavLink
                   to={item.path}
+                  title={isSidebarCollapsed ? item.label : ''}
                   className={({ isActive }) =>
-                    `flex items-center space-x-3 px-4 py-3 rounded-xl transition-all no-underline group ${isActive
+                    `flex items-center px-4 py-3 rounded-xl transition-all no-underline group ${isSidebarCollapsed ? 'lg:justify-center lg:px-2' : 'space-x-3'} ${isActive
                       ? 'active-nav-bg font-black'
                       : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
                     }`
                   }
                 >
                   <item.icon size={18} className={`shrink-0 transition-colors ${location.pathname === item.path ? 'text-teal-600' : 'text-gray-400 group-hover:text-gray-700'}`} />
-                  <span className="text-sm tracking-tight">{item.label}</span>
+                  <span className={`text-sm tracking-tight transition-all duration-300 whitespace-nowrap overflow-hidden ${isSidebarCollapsed ? 'lg:opacity-0 lg:w-0' : 'opacity-100 w-auto'}`}>
+                    {item.label}
+                  </span>
                 </NavLink>
               </li>
             ))}
           </ul>
         </nav>
 
-        <div className="p-4 bg-gray-50/50 mt-auto border-t border-gray-100">
+        <div className={`p-4 bg-gray-50/50 mt-auto border-t border-gray-100 transition-all duration-300 ${isSidebarCollapsed ? 'lg:p-2 lg:flex lg:flex-col lg:items-center' : ''}`}>
           <NavLink
             to="/profile"
+            title={isSidebarCollapsed ? 'Hồ sơ của tôi' : ''}
             className={({ isActive }) =>
-              `flex items-center space-x-3 px-4 py-3 rounded-xl transition-all no-underline mb-2 group ${isActive
+              `flex items-center rounded-xl transition-all no-underline mb-2 group ${isSidebarCollapsed ? 'lg:justify-center lg:w-10 lg:h-10 lg:p-0' : 'px-4 py-3 space-x-3'} ${isActive
                 ? 'active-nav-bg font-black'
                 : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900'
               }`
             }
           >
-            <UsersIcon size={18} className="text-gray-400 group-hover:text-gray-700" />
-            <span className="text-sm tracking-tight">Hồ sơ của tôi</span>
+            <UsersIcon size={18} className="text-gray-400 group-hover:text-gray-700 shrink-0" />
+            <span className={`text-sm tracking-tight transition-all duration-300 whitespace-nowrap overflow-hidden ${isSidebarCollapsed ? 'lg:opacity-0 lg:w-0' : 'opacity-100 w-auto'}`}>
+              Hồ sơ của tôi
+            </span>
           </NavLink>
           <button
             onClick={handleLogout}
-            className="flex items-center space-x-3 px-4 py-3 w-full rounded-xl text-red-600 hover:bg-red-50 transition-all border-0"
+            title={isSidebarCollapsed ? 'Đăng xuất' : ''}
+            className={`flex items-center rounded-xl text-red-600 hover:bg-red-50 transition-all border-0 ${isSidebarCollapsed ? 'lg:justify-center lg:w-10 lg:h-10 lg:p-0' : 'px-4 py-3 space-x-3 w-full'}`}
           >
-            <LogOut size={18} />
-            <span className="text-sm font-bold">Đăng xuất</span>
+            <LogOut size={18} className="shrink-0" />
+            <span className={`text-sm font-bold transition-all duration-300 whitespace-nowrap overflow-hidden ${isSidebarCollapsed ? 'lg:opacity-0 lg:w-0' : 'opacity-100 w-auto'}`}>
+              Đăng xuất
+            </span>
           </button>
         </div>
       </aside>
@@ -157,11 +181,18 @@ const Layout = () => {
             >
               <Menu size={22} />
             </button>
+            <button
+              onClick={toggleSidebar}
+              className="hidden lg:flex p-2 text-gray-400 hover:bg-gray-100 rounded-xl transition-colors"
+              title={isSidebarCollapsed ? "Mở rộng sidebar" : "Thu gọn sidebar"}
+            >
+              <Menu size={20} />
+            </button>
             <div>
-              <h2 className="text-lg font-black text-gray-800 tracking-tight">
+              <h2 className="text-lg font-black text-gray-800 tracking-tight leading-none">
                 {navItems.find(item => item.path === location.pathname)?.label || 'Quản Lý'}
               </h2>
-              <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider -mt-1">Coffee Management System</p>
+              <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mt-0.5">Coffee Management System</p>
             </div>
           </div>
 

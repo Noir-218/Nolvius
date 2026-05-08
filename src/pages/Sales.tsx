@@ -575,6 +575,8 @@ export default function Sales() {
                                 type="number"
                                 value={editingQty}
                                 onChange={e => setEditingQty(parseInt(e.target.value))}
+                                onWheel={e => (e.target as HTMLInputElement).blur()}
+                                onKeyDown={e => { if (e.key === 'ArrowUp' || e.key === 'ArrowDown') e.preventDefault(); }}
                                 className="form-control form-control-sm text-center fw-bold mx-auto border-primary"
                                 style={{ maxWidth: '100px' }}
                               />

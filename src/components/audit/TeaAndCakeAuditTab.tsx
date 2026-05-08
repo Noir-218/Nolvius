@@ -515,6 +515,8 @@ export const TeaAndCakeAuditTab: React.FC<Props> = ({ selectedDate }) => {
                             min="0"
                             value={lot.quantity}
                             onChange={e => updateLot(group.ingredient_id, lotIdx, 'quantity', e.target.value === '' ? '' : Number(e.target.value))}
+                            onWheel={e => (e.target as HTMLInputElement).blur()}
+                            onKeyDown={e => { if (e.key === 'ArrowUp' || e.key === 'ArrowDown') e.preventDefault(); }}
                             className="w-full h-8 text-center bg-transparent border-0 focus:ring-1 focus:ring-teal-400 focus:bg-white rounded py-0 font-bold text-slate-800 text-sm outline-none leading-8"
                             placeholder="0"
                           />
