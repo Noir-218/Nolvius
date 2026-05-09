@@ -53,27 +53,37 @@ const Layout = () => {
     localStorage.setItem('sidebar-collapsed', JSON.stringify(isSidebarCollapsed));
   }, [isSidebarCollapsed]);
 
-  // Global Ctrl + F shortcut
-  // IMPORTANT: e.preventDefault() must be called unconditionally (not inside `if searchInput`)
-  // so Chrome's Find bar is ALWAYS blocked when inside the app — regardless of which page is active.
-  // If only called inside `if (searchInput)`, pages without a search input won't block Chrome's default.
+  // Global search shortcuts: "/" and Ctrl+K
+  // Note: Ctrl+F cannot be reliably overridden on HTTPS (Chrome handles it at OS-level
+  // before JavaScript can intercept it). We use "/" (like GitHub/YouTube) and Ctrl+K
+  // (like VS Code/Notion) instead — both work 100% on local and production.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
-        // Always prevent Chrome's built-in Find bar from opening
-        e.preventDefault();
-        e.stopPropagation();
+      const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
+      const isTyping = tag === 'input' || tag === 'textarea' || (e.target as HTMLElement)?.isContentEditable;
 
-        // Focus the page's search input if it exists
+      // "/" shortcut — only when not already typing in an input
+      if (e.key === '/' && !isTyping && !e.ctrlKey && !e.metaKey && !e.altKey) {
         const searchInput = document.getElementById('main-search-input') as HTMLInputElement;
         if (searchInput) {
+          e.preventDefault();
+          searchInput.focus();
+          searchInput.select();
+        }
+        return;
+      }
+
+      // Ctrl+K or Cmd+K shortcut
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        const searchInput = document.getElementById('main-search-input') as HTMLInputElement;
+        if (searchInput) {
+          e.preventDefault();
           searchInput.focus();
           searchInput.select();
         }
       }
     };
 
-    // capture: true ensures we intercept before any other handlers (including browser-level)
     document.addEventListener('keydown', handleKeyDown, true);
     return () => document.removeEventListener('keydown', handleKeyDown, true);
   }, []);
