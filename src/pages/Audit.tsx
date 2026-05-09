@@ -145,7 +145,7 @@ export default function Audit() {
 
     const { data: dayAuditsData } = await supabase
       .from('stock_audits')
-      .select('id, ingredient_id, stock_in_store, stock_in_counter, actual_stock, opening_stock, theoretical_stock, notes')
+      .select('id, ingredient_id, stock_in_store, stock_in_counter, actual_stock, opening_stock, theoretical_stock, notes, store_calc_breakdown, counter_calc_breakdown')
       .eq('audit_date', selectedDate);
 
     const storeMap: Record<string, string> = {};
@@ -153,15 +153,18 @@ export default function Audit() {
     const sUnitMap: Record<string, string> = {};
     const cUnitMap: Record<string, string> = {};
     const auditIdMap: Record<string, string> = {};
+    const calcBreakdownMap: Record<string, Record<string, string>> = {};
 
     if (dayAuditsData) {
-      dayAuditsData.forEach((a) => {
+      dayAuditsData.forEach((a: any) => {
         if (a.ingredient_id) {
           storeMap[a.ingredient_id] = a.stock_in_store?.toString() ?? '';
           counterMap[a.ingredient_id] = a.stock_in_counter?.toString() ?? '';
           sUnitMap[a.ingredient_id] = 'base';
           cUnitMap[a.ingredient_id] = 'base';
           auditIdMap[a.ingredient_id] = a.id;
+          if (a.store_calc_breakdown) calcBreakdownMap[`store-${a.ingredient_id}`] = a.store_calc_breakdown;
+          if (a.counter_calc_breakdown) calcBreakdownMap[`counter-${a.ingredient_id}`] = a.counter_calc_breakdown;
         }
       });
     }
@@ -171,6 +174,7 @@ export default function Audit() {
     setCounterUnits(cUnitMap);
     setExistingAuditIds(auditIdMap);
     existingAuditIdsRef.current = auditIdMap;
+    setCalcBreakdowns(calcBreakdownMap);
 
     const startOfThisMonth = format(startOfMonth(parseDate(selectedDate)), 'yyyy-MM-dd');
     const { data: priorAudits } = await supabase
@@ -263,18 +267,21 @@ export default function Audit() {
     }
     const { data: monthlyData } = await supabase
       .from('monthly_opening_stock')
-      .select('id, ingredient_id, opening_stock, notes')
+      .select('id, ingredient_id, opening_stock, notes, calc_breakdown')
       .eq('year_month', yearMonth);
     const inputMap: Record<string, string> = {};
     const noteMap: Record<string, string> = {};
+    const monthlyCalcMap: Record<string, Record<string, string>> = {};
     if (monthlyData) {
-      monthlyData.forEach((m) => {
+      monthlyData.forEach((m: any) => {
         inputMap[m.ingredient_id] = m.opening_stock?.toString() ?? '';
         noteMap[m.ingredient_id] = m.notes ?? '';
+        if (m.calc_breakdown) monthlyCalcMap[`monthly-${m.ingredient_id}`] = m.calc_breakdown;
       });
     }
     setMonthlyOpeningInputs(inputMap);
     setMonthlyOpeningNotes(noteMap);
+    setCalcBreakdowns(monthlyCalcMap);
     const { data: unitsData } = await supabase.from('ingredient_units').select('*');
     if (unitsData) setAllUnits(unitsData);
     setLoading(false);
@@ -298,9 +305,7 @@ export default function Audit() {
     else if (viewMode === 'history') fetchHistory();
   }, [viewMode, selectedDate, fetchDailyData, fetchHistory, fetchMonthlyOpening]);
 
-  useEffect(() => {
-    setCalcBreakdowns({});
-  }, [selectedDate]);
+  // calcBreakdowns is now loaded from DB in fetchDailyData / fetchMonthlyOpening
 
   const handleExcelImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -454,6 +459,8 @@ export default function Audit() {
           actual_stock: actual,
           notes: '',
           audited_by: user?.id,
+          store_calc_breakdown: calcBreakdowns[`store-${id}`] || null,
+          counter_calc_breakdown: calcBreakdowns[`counter-${id}`] || null,
         };
 
         recordsToUpsert.push(record);
@@ -502,6 +509,7 @@ export default function Audit() {
           notes: monthlyOpeningNotes[id] || '',
           created_by: user?.id,
           updated_at: new Date().toISOString(),
+          calc_breakdown: calcBreakdowns[`monthly-${id}`] || null,
         };
         return record;
       });
