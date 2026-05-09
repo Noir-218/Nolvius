@@ -53,32 +53,28 @@ const Layout = () => {
     localStorage.setItem('sidebar-collapsed', JSON.stringify(isSidebarCollapsed));
   }, [isSidebarCollapsed]);
 
-  // Global search shortcuts: Ctrl+F, Ctrl+K, and "/"
-  // Ctrl+F CAN be overridden in Chrome — Google Sheets, Figma, VS Code Web all do it.
-  // The key: e.preventDefault() must be called UNCONDITIONALLY (not inside `if searchInput`).
-  // Chrome respects preventDefault() as long as there is an active focused element on the page.
+  // Auto-focus the main content area when the app loads so the page captures
+  // keyboard events immediately — without requiring the user to click first.
+  // This is required for Ctrl+F and "/" shortcuts to work right after page load.
+  useEffect(() => {
+    const mainContent = document.getElementById('main-content-area');
+    if (mainContent) mainContent.focus();
+  }, [location.pathname]);
+
+  // Global search shortcuts: Ctrl+F, Ctrl+Shift+F, and "/"
+  // Ctrl+F works only after the page has focus (user clicked OR auto-focus above kicked in).
+  // Ctrl+K is a Chrome-reserved shortcut (address bar) — do NOT use it.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
       const isTyping = tag === 'input' || tag === 'textarea' || (e.target as HTMLElement)?.isContentEditable;
 
-      // Ctrl+F or Cmd+F — always block Chrome's Find bar, then focus search if available
+      // Ctrl+F or Ctrl+Shift+F — block Chrome's Find bar, focus app search
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
-        e.preventDefault(); // Must be OUTSIDE the if(searchInput) check!
+        e.preventDefault();
         e.stopPropagation();
         const searchInput = document.getElementById('main-search-input') as HTMLInputElement;
         if (searchInput) {
-          searchInput.focus();
-          searchInput.select();
-        }
-        return;
-      }
-
-      // Ctrl+K or Cmd+K — like VS Code / Notion
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
-        const searchInput = document.getElementById('main-search-input') as HTMLInputElement;
-        if (searchInput) {
-          e.preventDefault();
           searchInput.focus();
           searchInput.select();
         }
@@ -267,8 +263,12 @@ const Layout = () => {
           </div>
         </header>
 
-        {/* Page Content */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-gray-50/50">
+        {/* Page Content — tabIndex={-1} allows programmatic focus without visible outline */}
+        <div
+          id="main-content-area"
+          tabIndex={-1}
+          className="flex-1 overflow-y-auto p-4 sm:p-6 bg-gray-50/50 outline-none"
+        >
           <div className="max-w-7xl mx-auto">
             <Outlet />
           </div>
