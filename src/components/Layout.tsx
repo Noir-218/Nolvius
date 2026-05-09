@@ -53,17 +53,29 @@ const Layout = () => {
     localStorage.setItem('sidebar-collapsed', JSON.stringify(isSidebarCollapsed));
   }, [isSidebarCollapsed]);
 
-  // Global search shortcuts: "/" and Ctrl+K
-  // Note: Ctrl+F cannot be reliably overridden on HTTPS (Chrome handles it at OS-level
-  // before JavaScript can intercept it). We use "/" (like GitHub/YouTube) and Ctrl+K
-  // (like VS Code/Notion) instead — both work 100% on local and production.
+  // Global search shortcuts: Ctrl+F, Ctrl+K, and "/"
+  // Ctrl+F CAN be overridden in Chrome — Google Sheets, Figma, VS Code Web all do it.
+  // The key: e.preventDefault() must be called UNCONDITIONALLY (not inside `if searchInput`).
+  // Chrome respects preventDefault() as long as there is an active focused element on the page.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
       const isTyping = tag === 'input' || tag === 'textarea' || (e.target as HTMLElement)?.isContentEditable;
 
-      // "/" shortcut — only when not already typing in an input
-      if (e.key === '/' && !isTyping && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      // Ctrl+F or Cmd+F — always block Chrome's Find bar, then focus search if available
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
+        e.preventDefault(); // Must be OUTSIDE the if(searchInput) check!
+        e.stopPropagation();
+        const searchInput = document.getElementById('main-search-input') as HTMLInputElement;
+        if (searchInput) {
+          searchInput.focus();
+          searchInput.select();
+        }
+        return;
+      }
+
+      // Ctrl+K or Cmd+K — like VS Code / Notion
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
         const searchInput = document.getElementById('main-search-input') as HTMLInputElement;
         if (searchInput) {
           e.preventDefault();
@@ -73,8 +85,8 @@ const Layout = () => {
         return;
       }
 
-      // Ctrl+K or Cmd+K shortcut
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+      // "/" shortcut — like GitHub / YouTube (only when not typing in an input)
+      if (e.key === '/' && !isTyping && !e.ctrlKey && !e.metaKey && !e.altKey) {
         const searchInput = document.getElementById('main-search-input') as HTMLInputElement;
         if (searchInput) {
           e.preventDefault();
