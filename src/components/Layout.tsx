@@ -54,23 +54,26 @@ const Layout = () => {
   }, [isSidebarCollapsed]);
 
   // Global Ctrl + F shortcut
-  // Use capture phase (true) so our handler fires before Chrome's built-in Find bar,
-  // which is critical on production HTTPS where the browser may intercept Ctrl+F first.
+  // IMPORTANT: e.preventDefault() must be called unconditionally (not inside `if searchInput`)
+  // so Chrome's Find bar is ALWAYS blocked when inside the app — regardless of which page is active.
+  // If only called inside `if (searchInput)`, pages without a search input won't block Chrome's default.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Check for Ctrl + F or Cmd + F
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
+        // Always prevent Chrome's built-in Find bar from opening
+        e.preventDefault();
+        e.stopPropagation();
+
+        // Focus the page's search input if it exists
         const searchInput = document.getElementById('main-search-input') as HTMLInputElement;
         if (searchInput) {
-          e.preventDefault();
-          e.stopPropagation();
           searchInput.focus();
           searchInput.select();
         }
       }
     };
 
-    // Use capture:true to intercept before browser default, and attach to document
+    // capture: true ensures we intercept before any other handlers (including browser-level)
     document.addEventListener('keydown', handleKeyDown, true);
     return () => document.removeEventListener('keydown', handleKeyDown, true);
   }, []);
