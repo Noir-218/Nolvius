@@ -53,7 +53,7 @@ export default function Audit() {
   const [monthlyOpeningInputs, setMonthlyOpeningInputs] = useState<Record<string, string>>({});
   const [monthlyOpeningUnits, setMonthlyOpeningUnits] = useState<Record<string, string>>({});
   const [monthlyOpeningNotes, setMonthlyOpeningNotes] = useState<Record<string, string>>({});
-  const [existingMonthlyIds, setExistingMonthlyIds] = useState<Record<string, string>>({});
+
   const [hasMonthlyOpening, setHasMonthlyOpening] = useState(false);
   type FilterType = 'all' | 'missing' | 'variance' | 'negative';
   const [filterType, setFilterType] = useState<FilterType>('all');
@@ -267,17 +267,14 @@ export default function Audit() {
       .eq('year_month', yearMonth);
     const inputMap: Record<string, string> = {};
     const noteMap: Record<string, string> = {};
-    const idMap: Record<string, string> = {};
     if (monthlyData) {
       monthlyData.forEach((m) => {
         inputMap[m.ingredient_id] = m.opening_stock?.toString() ?? '';
         noteMap[m.ingredient_id] = m.notes ?? '';
-        idMap[m.ingredient_id] = m.id;
       });
     }
     setMonthlyOpeningInputs(inputMap);
     setMonthlyOpeningNotes(noteMap);
-    setExistingMonthlyIds(idMap);
     const { data: unitsData } = await supabase.from('ingredient_units').select('*');
     if (unitsData) setAllUnits(unitsData);
     setLoading(false);
@@ -628,7 +625,7 @@ export default function Audit() {
     if (filterType === 'variance') {
       if (ing.id === activeId || calcModal?.ingId === ing.id) return true;
       const isHigh = theoretical > 0 && Math.abs(actual - theoretical) > (theoretical * 0.2);
-      const hasDiff = Math.abs(actual - theoretical) > 0.001;
+
       return matchSearch && matchCat && hasInput && (isHigh || (theoretical === 0 && actual > 0));
     }
 
