@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Plus, Edit2, Trash2, Search, Upload } from 'lucide-react';
+import { Plus, Edit2, Trash2, Search, Upload, Download } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import * as xlsx from 'xlsx';
 import type { Database } from '../../types/database.types';
@@ -27,9 +27,21 @@ export const IngredientsTab = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [formData, setFormData] = useState({
-    id: '', name: '', category_id: '', unit: '', min_stock: 0, order_type_id: ''
+    id: '', name: '', category_id: '', unit: '', min_stock: 0, order_type_id: '', unit_price: 0
   });
   const [conversionUnits, setConversionUnits] = useState<{ id?: string, unit_name: string, conversion_factor: number }[]>([]);
+
+  const handleDownloadSample = () => {
+    const data = [
+      ['Mã Nguyên Liệu', 'Tên Nguyên Liệu', 'Đơn Vị', 'Đơn Giá', 'Đơn Vị Quy Đổi (Tên:Hệ số,...)'],
+      ['NL001', 'Sữa tươi', 'Lít', 35000, 'Thùng:12,Túi:10'],
+      ['NL002', 'Hạt Cà Phê', 'kg', 250000, 'Túi:5'],
+    ];
+    const ws = xlsx.utils.aoa_to_sheet(data);
+    const wb = xlsx.utils.book_new();
+    xlsx.utils.book_append_sheet(wb, ws, "Sample");
+    xlsx.writeFile(wb, "mau_nhap_nguyen_lieu.xlsx");
+  };
 
   const fetchData = async () => {
     setLoading(true);
@@ -143,6 +155,7 @@ export const IngredientsTab = () => {
         category_id: ing.category_id || '',
         unit: ing.unit,
         min_stock: ing.min_stock || 0,
+        unit_price: ing.unit_price || 0,
         order_type_id: (ing as any).order_type_id || ''
       });
       // Fetch conversion units
@@ -150,7 +163,7 @@ export const IngredientsTab = () => {
       setConversionUnits(data || []);
     } else {
       setEditingId(null);
-      setFormData({ id: '', name: '', category_id: '', unit: '', min_stock: 0, order_type_id: '' });
+      setFormData({ id: '', name: '', category_id: '', unit: '', min_stock: 0, order_type_id: '', unit_price: 0 });
       setConversionUnits([]);
     }
     setIsModalOpen(true);
@@ -173,7 +186,7 @@ export const IngredientsTab = () => {
           String(val ?? '').replace(/[\u200b\u200c\u200d\uFEFF\u00A0]/g, '').trim();
 
         // Tìm dòng header chứa "mã" hoặc "tên"
-        const headerKeywords = ['mã nguyên liệu', 'tên nguyên liệu', 'đơn vị', 'mã nl', 'tên nl'];
+        const headerKeywords = ['mã nguyên liệu', 'tên nguyên liệu', 'đơn vị', 'mã nl', 'tên nl', 'đơn giá'];
         const headerRowIndex = rawRows.findIndex(row =>
           row.some(cell => headerKeywords.includes(clean(cell).toLowerCase()))
         );
@@ -190,6 +203,7 @@ export const IngredientsTab = () => {
         const colId = headerRow.findIndex(h => ['mã nguyên liệu', 'mã nl', 'mã', 'id', 'code'].includes(h));
         const colName = headerRow.findIndex(h => ['tên nguyên liệu', 'tên nl', 'tên', 'name'].includes(h));
         const colUnit = headerRow.findIndex(h => ['đơn vị', 'unit', 'dvt'].includes(h));
+        const colPrice = headerRow.findIndex(h => ['đơn giá', 'giá', 'price', 'unit price', 'đơn giá nhập'].includes(h));
         const colConversion = headerRow.findIndex(h => ['đơn vị quy đổi', 'conversion', 'quy đổi', 'don vi quy doi'].includes(h));
 
         if (colName === -1) {
@@ -213,6 +227,7 @@ export const IngredientsTab = () => {
               id: colId >= 0 ? clean(row[colId]) : undefined,
               name: colName >= 0 ? clean(row[colName]) : '',
               unit: colUnit >= 0 ? clean(row[colUnit]) || 'kg' : 'kg',
+              unit_price: colPrice >= 0 ? parseFloat(clean(row[colPrice])) || 0 : 0,
               conversionUnits: cUnits
             };
           })
@@ -352,6 +367,12 @@ export const IngredientsTab = () => {
             onChange={handleFileUpload}
           />
           <button
+            onClick={handleDownloadSample}
+            className="btn btn-outline-info flex-grow-1 d-flex align-items-center justify-content-center gap-2 rounded-3 shadow-sm"
+          >
+            <Download size={18} /> <span className="d-none d-sm-inline">Tải File Mẫu</span>
+          </button>
+          <button
             onClick={() => fileInputRef.current?.click()}
             className="btn btn-outline-success flex-grow-1 d-flex align-items-center justify-content-center gap-2 rounded-3 shadow-sm"
           >
@@ -376,6 +397,7 @@ export const IngredientsTab = () => {
               <th className="px-4 py-3 border-0 small fw-black tracking-widest text-uppercase text-secondary">Danh Mục</th>
               <th className="px-4 py-3 border-0 small fw-black tracking-widest text-uppercase text-secondary d-none d-md-table-cell">Loại Đơn</th>
               <th className="px-4 py-3 border-0 small fw-black tracking-widest text-uppercase text-secondary text-end">Tồn Hiện Tại</th>
+              <th className="px-4 py-3 border-0 small fw-black tracking-widest text-uppercase text-secondary text-end">Đơn giá</th>
               <th className="px-4 py-3 border-0 small fw-black tracking-widest text-uppercase text-secondary text-end d-none d-md-table-cell">Tối Thiểu</th>
               <th className="px-4 py-3 border-0 small fw-black tracking-widest text-uppercase text-secondary text-center">ĐVT</th>
               <th className="px-4 py-3 border-0 small fw-black tracking-widest text-uppercase text-secondary text-end">Thao tác</th>
@@ -401,6 +423,9 @@ export const IngredientsTab = () => {
                     <span className={`fw-black ${ (stocks[ing.id] ?? 0) <= (ing.min_stock || 0) ? 'text-danger' : 'text-primary' }`}>
                       {stocks[ing.id] ?? 0}
                     </span>
+                  </td>
+                  <td className="px-4 py-3 text-end fw-bold text-success">
+                    {ing.unit_price?.toLocaleString()}
                   </td>
                   <td className="px-4 py-3 text-end text-muted d-none d-md-table-cell">{ing.min_stock}</td>
                   <td className="px-4 py-3 text-center small text-secondary">{ing.unit}</td>
@@ -453,7 +478,17 @@ export const IngredientsTab = () => {
               {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
-          <div className="col-12 col-md-4">
+          <div className="col-12 col-md-6">
+            <label className="form-label small fw-bold text-muted">Đơn Giá Nhập (*)</label>
+            <input 
+              required type="number" 
+              step="0.000001" 
+              value={formData.unit_price} 
+              onChange={e => setFormData({ ...formData, unit_price: parseFloat(e.target.value) || 0 })} 
+              className="form-control text-end fw-bold text-success" 
+            />
+          </div>
+          <div className="col-12 col-md-3">
             <label className="form-label small fw-bold text-muted">Đơn Vị Nhỏ Nhất (*)</label>
             <input 
               required type="text" 
@@ -463,7 +498,7 @@ export const IngredientsTab = () => {
               className="form-control" 
             />
           </div>
-          <div className="col-12 col-md-4">
+          <div className="col-12 col-md-3">
             <label className="form-label small fw-bold text-muted">Tồn Tối Thiểu</label>
             <input 
               required type="number" 

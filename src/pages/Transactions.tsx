@@ -110,6 +110,7 @@ export default function Transactions() {
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [branches, setBranches] = useState<any[]>([]);
   const [lines, setLines] = useState<LineItem[]>([emptyLine()]);
+  const [txRevenue, setTxRevenue] = useState<string>('');
   const [saving, setSaving] = useState(false);
 
   // Branch Modal / Form
@@ -155,7 +156,7 @@ export default function Transactions() {
     // Fetch dependencies
     const { data: ingData } = await supabase
       .from('ingredients')
-      .select('id, name, unit, category_id, ingredient_categories(id, name)')
+      .select('id, name, unit, unit_price, category_id, ingredient_categories(id, name)')
       .order('name');
     if (ingData) setIngredients(ingData as any[]);
 
@@ -194,6 +195,7 @@ export default function Transactions() {
     setTxIsFast(false);
     setTxIsApproved(false);
     setTxIsExported(false);
+    setTxRevenue('');
     setLines([emptyLine()]);
   };
 
@@ -232,7 +234,7 @@ export default function Transactions() {
           transaction_date: txDate,
           supplier_id: txType === 'IN' && txSupplier ? txSupplier : null,
           branch_id: (txType === 'IN_TRANSFER' || txType === 'OUT') && txBranch ? txBranch : null,
-          notes: txNotes || null,
+          notes: txType === 'WASTE' && txRevenue ? `[DT: ${parseFloat(txRevenue).toLocaleString()}] ${txNotes}` : (txNotes || null),
           is_fast_entered: txIsFast,
           is_approved: txIsApproved,
           is_transfer_exported: txIsExported,
@@ -346,10 +348,24 @@ export default function Transactions() {
     setTxDate(group.transaction_date || today);
     setTxSupplier(group.items[0]?.supplier_id || '');
     setTxBranch(group.items[0]?.branch_id || '');
-    setTxNotes(group.notes || '');
     setTxIsFast(group.is_fast_entered);
     setTxIsApproved(group.is_approved || false);
     setTxIsExported(group.is_transfer_exported || false);
+    
+    if (group.type === 'WASTE' && group.notes) {
+      const match = group.notes.match(/^\[DT: ([\d,.]+)\]/);
+      if (match) {
+        setTxRevenue(match[1].replace(/,/g, ''));
+        setTxNotes(group.notes.replace(/^\[DT: [\d,.]+\]\s*/, ''));
+      } else {
+        setTxRevenue('');
+        setTxNotes(group.notes);
+      }
+    } else {
+      setTxRevenue('');
+      setTxNotes(group.notes || '');
+    }
+
     setLines(group.items.map(item => ({
       id: crypto.randomUUID(),
       ingredient_id: item.ingredient_id,
@@ -959,6 +975,60 @@ export default function Transactions() {
 
           {txType === 'WASTE' && (
             <div className="col-12">
+              <div className="row g-3 mb-3">
+                <div className="col-12 col-md-6">
+                  <div className="card p-3 border-0 bg-primary bg-opacity-10 rounded-4 h-100 shadow-sm border-start border-4 border-primary">
+                    <label className="form-label small fw-black text-primary text-uppercase tracking-widest mb-2">Doanh Thu Ngày/Ca</label>
+                    <div className="input-group">
+                      <input 
+                        type="number" 
+                        className="form-control form-control-lg fw-black text-primary border-0 bg-white" 
+                        placeholder="Nhập doanh thu..." 
+                        value={txRevenue}
+                        onChange={e => setTxRevenue(e.target.value)}
+                        onWheel={e => (e.target as HTMLInputElement).blur()}
+                      />
+                      <span className="input-group-text border-0 bg-white fw-bold text-muted">VND</span>
+                    </div>
+                    <div className="mt-2 d-flex justify-content-between align-items-center">
+                      <span className="small text-secondary fw-bold">Hạn mức (0.075%):</span>
+                      <span className="badge bg-white text-primary border border-primary-subtle rounded-pill">
+                        {(parseFloat(txRevenue || '0') * 0.00075).toLocaleString()} VND
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <div className="col-12 col-md-6">
+                  {(() => {
+                    const limit = parseFloat(txRevenue || '0') * 0.00075;
+                    const actual = lines.reduce((sum, l) => {
+                      const ing = ingredients.find(i => i.id === l.ingredient_id);
+                      if (!ing || !l.quantity) return sum;
+                      let factor = 1;
+                      if (l.unit_name !== 'base') {
+                        const unit = allUnits.find(u => u.ingredient_id === l.ingredient_id && u.unit_name === l.unit_name);
+                        if (unit) factor = unit.conversion_factor;
+                      }
+                      return sum + (parseFloat(l.quantity) * factor * (ing.unit_price || 0));
+                    }, 0);
+                    const diff = limit - actual;
+                    const statusClass = diff >= 0 ? 'border-success' : 'border-danger';
+                    const textClass = diff >= 0 ? 'text-success' : 'text-danger';
+
+                    return (
+                      <div className={`card p-3 border-0 bg-light rounded-4 h-100 shadow-sm border-start border-4 ${statusClass}`}>
+                        <label className="form-label small fw-black text-secondary text-uppercase tracking-widest mb-2">Thực Tế Hủy</label>
+                        <h3 className={`fw-black mb-1 ${textClass}`}>{actual.toLocaleString()} <small style={{ fontSize: '14px' }}>VND</small></h3>
+                        <div className="mt-auto pt-2 d-flex justify-content-between align-items-center border-top border-secondary border-opacity-10">
+                          <span className="small text-muted fw-bold">{diff >= 0 ? 'Còn lại:' : 'Vượt mức:'}</span>
+                          <span className={`fw-black small ${textClass}`}>{Math.abs(diff).toLocaleString()} VND</span>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
+
               <div className="card p-3 border-0 bg-warning-subtle rounded-4 mb-2">
                 <h6 className="fw-black text-warning-emphasis text-uppercase small mb-3">Hủy Theo Sản Phẩm (Quy đổi tự động)</h6>
                 <div className="row g-2">
@@ -1233,6 +1303,13 @@ export default function Transactions() {
                             <span className="small text-muted italic" style={{ fontSize: '11px' }}>
                               = <strong>{(parseFloat(line.quantity) || 0) * (availableUnits.find(u => u.unit_name === line.unit_name)?.conversion_factor || 1)}</strong> {selectedIng?.unit}
                               <span className="ms-1">(Tổng quy đổi về đơn vị nhỏ nhất)</span>
+                            </span>
+                          </div>
+                        )}
+                        {txType === 'WASTE' && selectedIng && line.quantity && (
+                          <div className="col-12 text-end mt-1">
+                            <span className="badge bg-danger-subtle text-danger border border-danger-subtle rounded-pill">
+                              Giá trị hủy: {((parseFloat(line.quantity) || 0) * (availableUnits.find(u => u.unit_name === line.unit_name)?.conversion_factor || 1) * (selectedIng.unit_price || 0)).toLocaleString()} VND
                             </span>
                           </div>
                         )}

@@ -163,6 +163,7 @@ export type Database = {
           reorder_cycle_days: number | null
           supplier_id: string | null
           unit: string
+          unit_price: number | null
           updated_at: string | null
         }
         Insert: {
@@ -175,6 +176,7 @@ export type Database = {
           reorder_cycle_days?: number | null
           supplier_id?: string | null
           unit: string
+          unit_price?: number | null
           updated_at?: string | null
         }
         Update: {
@@ -187,6 +189,7 @@ export type Database = {
           reorder_cycle_days?: number | null
           supplier_id?: string | null
           unit?: string
+          unit_price?: number | null
           updated_at?: string | null
         }
         Relationships: [

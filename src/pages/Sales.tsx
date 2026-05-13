@@ -97,8 +97,8 @@ export default function Sales() {
           }
         }
 
-        const { data: dbProducts } = await supabase.from('products').select('id, name');
-        const { data: dbIngredients } = await supabase.from('ingredients').select('id, name');
+        const { data: dbProducts } = await supabase.from('products').select('id, name').limit(10000);
+        const { data: dbIngredients } = await supabase.from('ingredients').select('id, name').limit(10000);
         
         const nameMap = new Map((dbProducts || []).map(p => [cleanString(p.name.toLowerCase()), p.id]));
         const codeMap = new Map((dbProducts || []).map(p => [cleanString(p.id.toLowerCase()), p.id]));
@@ -154,12 +154,12 @@ export default function Sales() {
         const productIds = Object.keys(qtyByProduct);
         if (productIds.length > 0) {
           // 1. Fetch ALL ingredients for metadata
-          const { data: allIngs } = await supabase.from('ingredients').select('id, name, unit');
+          const { data: allIngs } = await supabase.from('ingredients').select('id, name, unit').limit(10000);
           const ingMetadata: Record<string, {name: string, unit: string}> = {};
           (allIngs || []).forEach(i => ingMetadata[i.id] = { name: i.name, unit: i.unit });
 
           // 2. Fetch ALL recipes to resolve recursively
-          const { data: allRecipes } = await supabase.from('recipes').select('*');
+          const { data: allRecipes } = await supabase.from('recipes').select('*').limit(10000);
           
           const calcUsages: Record<string, number> = {};
           const ingIds = new Set((allIngs || []).map(i => i.id));
@@ -281,8 +281,8 @@ export default function Sales() {
     daySales.forEach(s => { if (s.product_id) qtyByProduct[s.product_id] = (qtyByProduct[s.product_id] || 0) + s.quantity; });
 
     const productIds = Object.keys(qtyByProduct);
-    const { data: allRecipes } = await supabase.from('recipes').select('*');
-    const { data: allIngs } = await supabase.from('ingredients').select('id');
+    const { data: allRecipes } = await supabase.from('recipes').select('*').limit(10000);
+    const { data: allIngs } = await supabase.from('ingredients').select('id').limit(10000);
     const ingIds = new Set((allIngs || []).map(i => i.id));
 
     const totalUsage: Record<string, number> = {};
