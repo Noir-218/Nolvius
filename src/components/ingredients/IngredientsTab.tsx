@@ -214,74 +214,79 @@ export const IngredientsTab = () => {
 
         const inserts = dataRows
           .map(row => {
+            const id = colId >= 0 ? clean(row[colId]) : undefined;
+            if (!id) return null;
+
+            const item: any = { id };
+            
+            const name = colName >= 0 ? clean(row[colName]) : '';
+            if (name) item.name = name;
+
+            const unit = colUnit >= 0 ? clean(row[colUnit]) : '';
+            if (unit) item.unit = unit;
+
+            const priceRaw = colPrice >= 0 ? row[colPrice] : undefined;
+            if (priceRaw !== undefined && clean(priceRaw) !== '') {
+              item.unit_price = parseFloat(clean(priceRaw)) || 0;
+            }
+
             const conversionStr = colConversion >= 0 ? clean(row[colConversion]) : '';
-            const cUnits = conversionStr ? conversionStr.split(',').map(pair => {
-              const parts = pair.split(':');
-              return { 
-                unit_name: clean(parts[0]), 
-                conversion_factor: parseFloat(clean(parts[1])) || 1 
-              };
-            }).filter(u => u.unit_name) : [];
+            if (conversionStr) {
+              item.conversionUnits = conversionStr.split(',').map(pair => {
+                const parts = pair.split(':');
+                return { 
+                  unit_name: clean(parts[0]), 
+                  conversion_factor: parseFloat(clean(parts[1])) || 1 
+                };
+              }).filter(u => u.unit_name);
+            }
 
-            return {
-              id: colId >= 0 ? clean(row[colId]) : undefined,
-              name: colName >= 0 ? clean(row[colName]) : '',
-              unit: colUnit >= 0 ? clean(row[colUnit]) || 'kg' : 'kg',
-              unit_price: colPrice >= 0 ? parseFloat(clean(row[colPrice])) || 0 : 0,
-              conversionUnits: cUnits
-            };
+            return item;
           })
-          .filter(r => r.name);
+          .filter(r => r !== null) as any[];
 
-        // Tách thành có id và không có id
-        const withId = inserts.filter(r => r.id) as any[];
+        if (inserts.length === 0) {
+          alert('Không tìm thấy dữ liệu hợp lệ để import (Cần có Mã Nguyên Liệu).');
+          if (fileInputRef.current) fileInputRef.current.value = '';
+          return;
+        }
         
         let successCount = 0;
         let errorCount = 0;
 
-        if (withId.length > 0) {
-          // Extract basic ingredient data for upsert
-          const ingredientsToUpsert = withId.map(({ conversionUnits, ...rest }) => rest);
+        // Tách dữ liệu cơ bản và dữ liệu quy đổi
+        const ingredientsToUpsert = inserts.map(({ conversionUnits, ...rest }) => rest);
+        
+        const { error } = await supabase
+          .from('ingredients')
+          .upsert(ingredientsToUpsert)
+          .select();
+
+        if (error) {
+          errorCount = inserts.length;
+          console.error('Import error:', error);
+        } else {
+          successCount = inserts.length;
           
-          const { error } = await supabase
-            .from('ingredients')
-            .upsert(ingredientsToUpsert)
-            .select();
+          // Chỉ cập nhật đơn vị quy đổi cho những dòng CÓ dữ liệu quy đổi trong Excel
+          for (const item of inserts) {
+            if (item.conversionUnits && item.conversionUnits.length > 0) {
+              // Delete old units for this specific ingredient
+              await supabase.from('ingredient_units').delete().eq('ingredient_id', item.id);
+              
+              const unitsToInsert = item.conversionUnits.map((cu: any) => ({
+                ingredient_id: item.id,
+                unit_name: cu.unit_name,
+                conversion_factor: cu.conversion_factor
+              }));
 
-          if (error) {
-            errorCount += withId.length;
-            console.error('Import error:', error);
-          } else {
-            successCount += withId.length;
-            
-            // Handle conversion units
-            const ingIds = withId.map(i => i.id);
-            // Delete old units first
-            await supabase.from('ingredient_units').delete().in('ingredient_id', ingIds);
-            
-            const allConvInserts: any[] = [];
-            withId.forEach(ing => {
-              if (ing.conversionUnits && ing.conversionUnits.length > 0) {
-                ing.conversionUnits.forEach((cu: any) => {
-                  allConvInserts.push({
-                    ingredient_id: ing.id,
-                    unit_name: cu.unit_name,
-                    conversion_factor: cu.conversion_factor
-                  });
-                });
-              }
-            });
-
-            if (allConvInserts.length > 0) {
-              await supabase.from('ingredient_units').insert(allConvInserts);
+              await supabase.from('ingredient_units').insert(unitsToInsert);
             }
           }
         }
 
-        const skippedCount = inserts.length - withId.length;
-
         if (successCount > 0) {
-          alert(`Đã import thành công ${successCount} nguyên liệu!${errorCount > 0 ? `\n${errorCount} dòng bị lỗi.` : ''}${skippedCount > 0 ? `\n${skippedCount} dòng bị bỏ qua do thiếu mã.` : ''}`);
+          alert(`Đã cập nhật thành công ${successCount} nguyên liệu!${errorCount > 0 ? `\n${errorCount} dòng bị lỗi.` : ''}`);
         } else {
           alert('Import thất bại! Vui lòng kiểm tra lại mã nguyên liệu hoặc định dạng file.');
         }
