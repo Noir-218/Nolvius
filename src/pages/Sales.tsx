@@ -12,6 +12,7 @@ interface ParsedSale {
   sale_date: string;
   matched_product_id?: string;
   is_direct_ingredient?: boolean;
+  net_revenue?: number;
 }
 
 interface IngredientUsage {
@@ -72,22 +73,22 @@ export default function Sales() {
         const ws = wb.Sheets[wb.SheetNames[0]];
         const rawRows = xlsx.utils.sheet_to_json(ws, { header: 1 }) as string[][];
 
-        const headerKeywords = ['mã hàng', 'mã sản phẩm', 'mã sp', 'tên hàng', 'tên sản phẩm'];
+        const headerKeywords = ['mã hàng', 'mã sản phẩm', 'mã sp', 'mã món', 'tên hàng', 'tên sản phẩm', 'tên món'];
         const headerRowIndex = rawRows.findIndex(row =>
           row.some(cell => cell && headerKeywords.includes(String(cell).toLowerCase().trim()))
         );
 
         if (headerRowIndex === -1) {
-          alert('Không tìm thấy dòng tiêu đề (Mã hàng / Tên hàng) trong file. Vui lòng kiểm tra lại.');
+          alert('Không tìm thấy dòng tiêu đề (Mã hàng / Tên hàng / Tên món) trong file. Vui lòng kiểm tra lại.');
           return;
         }
 
         const headerRow = rawRows[headerRowIndex].map(cell => String(cell ?? '').toLowerCase().trim());
         const dataRows = rawRows.slice(headerRowIndex + 1);
 
-        const colCode = headerRow.findIndex(h => ['mã hàng', 'mã sản phẩm', 'mã sp', 'mã số', 'mã', 'id', 'code', 'product code'].includes(h));
+        const colCode = headerRow.findIndex(h => ['mã hàng', 'mã sản phẩm', 'mã sp', 'mã món', 'mã số', 'mã', 'id', 'code', 'product code'].includes(h));
         const colName = headerRow.findIndex(h => ['tên hàng', 'tên sản phẩm', 'tên món', 'product name', 'name', 'sản phẩm'].includes(h));
-        let colQty = headerRow.findIndex(h => ['số lượng', 'sl', 'quantity', 'qty', 'số lượng bán'].includes(h));
+        let colQty = headerRow.findIndex(h => ['số lượng', 'sl', 'đã bán', 'quantity', 'qty', 'số lượng bán'].includes(h));
         if (colQty === -1) {
           const firstDataRow = dataRows.find(r => r[colCode] || r[colName]);
           if (firstDataRow) {
@@ -96,6 +97,7 @@ export default function Sales() {
             );
           }
         }
+        const colNetRevenue = headerRow.findIndex(h => ['doanh thu (net)', 'doanh thu net', 'net revenue', 'doanh thu'].includes(h));
 
         const { data: dbProducts } = await supabase.from('products').select('id, name').limit(10000);
         const { data: dbIngredients } = await supabase.from('ingredients').select('id, name').limit(10000);
@@ -108,15 +110,25 @@ export default function Sales() {
 
         const parsed: ParsedSale[] = dataRows.map((row) => {
           const rawCode = colCode >= 0 ? cleanString(String(row[colCode] ?? '')) : '';
-          const rawName = colName >= 0 ? cleanString(String(row[colName] ?? '')) : '';
+          let rawName = colName >= 0 ? cleanString(String(row[colName] ?? '')) : '';
+          
+          // Tự động làm sạch tên món: bỏ phần giá bán đằng sau dấu chấm phẩy ';' nếu có
+          if (rawName.includes(';')) {
+            rawName = cleanString(rawName.split(';')[0]);
+          }
+
           const rawQty = colQty >= 0 ? row[colQty] : undefined;
           const qty = parseInt(String(rawQty ?? '0').replace(/[^0-9]/g, '')) || 0;
+
+          const rawNet = colNetRevenue >= 0 ? row[colNetRevenue] : undefined;
+          const netVal = parseFloat(String(rawNet ?? '0').replace(/[^0-9.-]/g, '')) || 0;
 
           return {
             product_name: rawName || rawCode || '',
             product_code: rawCode,
             quantity: qty,
-            sale_date: importDate
+            sale_date: importDate,
+            net_revenue: netVal
           };
         }).filter(r => (r.product_name || r.product_code) && r.quantity > 0);
 
@@ -233,6 +245,7 @@ export default function Sales() {
       }
 
       const uniqueDates = [...new Set(sales.map(s => s.sale_date))];
+      const totalRevenue = sales.reduce((sum, s) => sum + (s.net_revenue || 0), 0);
       
       // 1. Delete existing sales for these dates to prevent duplicates
       for (const date of uniqueDates) {
@@ -255,7 +268,7 @@ export default function Sales() {
 
       // 3. Sync stock transactions
       for (const date of uniqueDates) {
-        await syncStockTransactions(date);
+        await syncStockTransactions(date, totalRevenue);
       }
 
       alert('Đã import thành công!');
@@ -272,10 +285,32 @@ export default function Sales() {
     setProcessing(false);
   };
 
-  const syncStockTransactions = async (date: string) => {
+  const syncStockTransactions = async (date: string, totalRevenue?: number) => {
+    // Tự động bảo toàn doanh thu cũ nếu không truyền totalRevenue (ví dụ khi sửa/xóa dòng đơn lẻ ở Lịch sử)
+    let revenueToSave = totalRevenue;
+    if (revenueToSave === undefined) {
+      const { data } = await supabase
+        .from('stock_transactions')
+        .select('notes')
+        .eq('transaction_date', date)
+        .eq('type', 'SALES_USAGE')
+        .is('ingredient_id', null)
+        .limit(1);
+      if (data && data[0]?.notes) {
+        const match = data[0].notes.match(/^\[REVENUE: ([\d,.]+)\]/);
+        if (match) {
+          revenueToSave = parseFloat(match[1].replace(/,/g, ''));
+        }
+      }
+    }
+
     await supabase.from('stock_transactions').delete().eq('transaction_date', date).eq('type', 'SALES_USAGE');
     const { data: daySales } = await supabase.from('sales').select('product_id, quantity').eq('sale_date', date);
-    if (!daySales || daySales.length === 0) return;
+    if (!daySales || daySales.length === 0) {
+      // Nếu không còn lượt bán nào mà có doanh thu lưu trữ trước đó, xóa sạch
+      localStorage.removeItem(`daily_revenue_${date}`);
+      return;
+    }
 
     const qtyByProduct: Record<string, number> = {};
     daySales.forEach(s => { if (s.product_id) qtyByProduct[s.product_id] = (qtyByProduct[s.product_id] || 0) + s.quantity; });
@@ -319,6 +354,18 @@ export default function Sales() {
       notes: `Đồng bộ tiêu hao ngày ${date}`,
       created_by: user?.id
     }));
+
+    if (revenueToSave !== undefined && revenueToSave > 0) {
+      txInserts.push({
+        ingredient_id: null as any,
+        type: 'SALES_USAGE',
+        quantity: 0,
+        transaction_date: date,
+        notes: `[REVENUE: ${revenueToSave}]`,
+        created_by: user?.id
+      });
+      localStorage.setItem(`daily_revenue_${date}`, revenueToSave.toString());
+    }
 
     if (txInserts.length > 0) await supabase.from('stock_transactions').insert(txInserts);
   };

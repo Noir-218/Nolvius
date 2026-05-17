@@ -34,6 +34,8 @@ const Stock = () => {
   const [categories, setCategories] = useState<string[]>([]);
   const [filterOrderType, setFilterOrderType] = useState('');
   const [orderTypes, setOrderTypes] = useState<OrderType[]>([]);
+  const [totalRevenue, setTotalRevenue] = useState<number>(0);
+  const [totalWasteCost, setTotalWasteCost] = useState<number>(0);
 
   const fetchStock = async () => {
     setLoading(true);
@@ -193,6 +195,43 @@ const Stock = () => {
       new Set(merged.map(r => r.category_name).filter(Boolean))
     ) as string[];
     setCategories(cats);
+
+    // Fetch total revenue up to current date from SALES_USAGE metadata transactions
+    const { data: revenueData } = await supabase
+      .from('stock_transactions')
+      .select('notes')
+      .eq('type', 'SALES_USAGE')
+      .is('ingredient_id', null);
+    
+    let revSum = 0;
+    if (revenueData) {
+      revenueData.forEach(tx => {
+        if (tx.notes) {
+          const match = tx.notes.match(/^\[REVENUE: ([\d,.]+)\]/);
+          if (match) {
+            revSum += parseFloat(match[1].replace(/,/g, ''));
+          }
+        }
+      });
+    }
+    setTotalRevenue(revSum);
+
+    // Fetch actual waste cost by joining WASTE transactions with ingredients to get unit_price
+    const { data: wasteTx } = await supabase
+      .from('stock_transactions')
+      .select('quantity, ingredients(unit_price)')
+      .eq('type', 'WASTE');
+    
+    let wasteSum = 0;
+    if (wasteTx) {
+      wasteTx.forEach(tx => {
+        const qty = Math.abs(tx.quantity);
+        const price = (tx.ingredients as any)?.unit_price || 0;
+        wasteSum += qty * price;
+      });
+    }
+    setTotalWasteCost(wasteSum);
+
     setLoading(false);
   };
 
@@ -289,6 +328,62 @@ const Stock = () => {
               </div>
             </div>
             <p className="mt-2 mb-0 text-[10px] text-gray-400 font-bold uppercase">Cần nhập kho ngay lập tức</p>
+          </div>
+        </div>
+      </div>
+
+      {/* DISPOSAL & ALLOWANCE OVERVIEW */}
+      <div className="mb-8">
+        <h5 className="fw-black text-gray-800 text-uppercase tracking-wider mb-3">TỔNG QUAN HẠN MỨC HỦY HÀNG</h5>
+        <div className="row g-4">
+          {/* Total Revenue */}
+          <div className="col-12 col-sm-6 col-lg-3">
+            <div className="bg-white border-0 shadow-sm rounded-4 p-4 border-start border-5 border-primary h-100 premium-shadow">
+              <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest mb-1">Tổng Doanh Thu</p>
+              <h4 className="fw-black text-gray-800 mb-1">{totalRevenue.toLocaleString()} <small className="text-xs text-gray-400">VND</small></h4>
+              <p className="text-[10px] text-gray-400 font-bold uppercase mb-0">Lũy kế từ dữ liệu số bán đã nhập</p>
+            </div>
+          </div>
+          {/* Allowed Disposal */}
+          <div className="col-12 col-sm-6 col-lg-3">
+            <div className="bg-white border-0 shadow-sm rounded-4 p-4 border-start border-5 border-info h-100 premium-shadow">
+              <p className="text-[10px] text-info font-black uppercase tracking-widest mb-1">Hạn Mức Hủy Cho Phép</p>
+              <h4 className="fw-black text-info mb-1">{(totalRevenue * 0.00075).toLocaleString()} <small className="text-xs text-info">VND</small></h4>
+              <p className="text-[10px] text-gray-400 font-bold uppercase mb-0">Tương đương 0.075% doanh thu</p>
+            </div>
+          </div>
+          {/* Actual Waste */}
+          <div className="col-12 col-sm-6 col-lg-3">
+            <div className="bg-white border-0 shadow-sm rounded-4 p-4 border-start border-5 border-danger h-100 premium-shadow">
+              <p className="text-[10px] text-danger font-black uppercase tracking-widest mb-1">Chi Phí Đã Hủy</p>
+              <h4 className="fw-black text-danger mb-1">{totalWasteCost.toLocaleString()} <small className="text-xs text-danger">VND</small></h4>
+              <p className="text-[10px] text-gray-400 font-bold uppercase mb-0">Tính theo đơn giá nguyên liệu</p>
+            </div>
+          </div>
+          {/* Remaining Allowance */}
+          <div className="col-12 col-sm-6 col-lg-3">
+            {(() => {
+              const limit = totalRevenue * 0.00075;
+              const diff = limit - totalWasteCost;
+              const borderClass = diff >= 0 ? 'border-success' : 'border-danger';
+              const textClass = diff >= 0 ? 'text-success' : 'text-danger';
+              const badgeClass = diff >= 0 ? 'bg-success-subtle text-success border-success' : 'bg-danger-subtle text-danger border-danger';
+              
+              return (
+                <div className={`bg-white border-0 shadow-sm rounded-4 p-4 border-start border-5 ${borderClass} h-100 premium-shadow`}>
+                  <div className="d-flex justify-content-between align-items-center mb-1">
+                    <p className={`text-[10px] font-black uppercase tracking-widest mb-0 ${textClass}`}>Hạn Mức Còn Lại</p>
+                    <span className={`badge border rounded-pill ${badgeClass}`} style={{ fontSize: '9px' }}>
+                      {diff >= 0 ? 'AN TOÀN' : 'VƯỢT MỨC'}
+                    </span>
+                  </div>
+                  <h4 className={`fw-black mb-1 ${textClass}`}>{diff.toLocaleString()} <small className={`text-xs ${textClass}`}>VND</small></h4>
+                  <p className="text-[10px] text-gray-400 font-bold uppercase mb-0">
+                    {diff >= 0 ? 'Hạn mức chi phí còn được phép hủy' : 'Chi phí đã vượt hạn mức cho phép'}
+                  </p>
+                </div>
+              );
+            })()}
           </div>
         </div>
       </div>

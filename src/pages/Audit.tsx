@@ -424,7 +424,7 @@ export default function Audit() {
     XLSX.writeFile(wb, `Kiem_Ke_${selectedDate}.xlsx`);
   };
 
-  const handleSaveAudit = async () => {
+  const handleSaveAudit = useCallback(async () => {
     const filledKeys = Object.keys(storeStocks).concat(Object.keys(counterStocks))
       .filter((v, i, a) => a.indexOf(v) === i)
       .filter(k => storeStocks[k] !== '' || counterStocks[k] !== '');
@@ -500,9 +500,9 @@ export default function Audit() {
       toast.error('Lỗi khi lưu: ' + (err?.message || err?.details || JSON.stringify(err))); 
     }
     setSaving(false);
-  };
+  }, [storeStocks, counterStocks, storeUnits, counterUnits, allUnits, openingStockMap, dailyTx, selectedDate, user, ingredients, calcBreakdowns, fetchDailyData]);
 
-  const handleSaveMonthlyOpening = async () => {
+  const handleSaveMonthlyOpening = useCallback(async () => {
     const filledKeys = Object.keys(monthlyOpeningInputs).filter(k => monthlyOpeningInputs[k] !== '');
     if (filledKeys.length === 0) {
       toast.error('Vui lòng nhập tồn!');
@@ -542,7 +542,22 @@ export default function Audit() {
       toast.error('Lỗi: ' + (err?.message || err?.details || JSON.stringify(err))); 
     }
     setSaving(false);
-  };
+  }, [monthlyOpeningInputs, monthlyOpeningUnits, monthlyOpeningNotes, yearMonth, user, calcBreakdowns, allUnits, fetchMonthlyOpening]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        if (viewMode === 'daily') {
+          handleSaveAudit();
+        } else if (viewMode === 'opening') {
+          handleSaveMonthlyOpening();
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [viewMode, handleSaveAudit, handleSaveMonthlyOpening]);
 
   const handleMonthlyExcelImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -726,7 +741,7 @@ export default function Audit() {
                     <td className="px-4 py-3 border-gray-50">
                       <div className="flex items-center justify-center gap-1 mx-auto" style={{maxWidth: '240px'}}>
                         <div className="flex items-center flex-1 gap-1 bg-white border border-gray-100 rounded-xl px-2">
-                          <input type="number" value={monthlyOpeningInputs[ing.id] || ''} onFocus={() => setActiveId(ing.id)} onBlur={() => setActiveId(null)} onChange={e => setMonthlyOpeningInputs(prev => ({ ...prev, [ing.id]: e.target.value }))} onWheel={e => (e.target as HTMLInputElement).blur()} onKeyDown={e => { if (e.key === 'ArrowUp' || e.key === 'ArrowDown') e.preventDefault(); }} className="w-full text-end border-0 font-black text-sm bg-transparent h-9 outline-none" placeholder="0" />
+                          <input type="number" value={monthlyOpeningInputs[ing.id] || ''} onFocus={() => setActiveId(ing.id)} onBlur={() => setActiveId(null)} onChange={e => setMonthlyOpeningInputs(prev => ({ ...prev, [ing.id]: e.target.value }))} onWheel={e => (e.target as HTMLInputElement).blur()} onKeyDown={e => { if (e.key === 'ArrowUp' || e.key === 'ArrowDown') e.preventDefault(); if (e.key === 'Enter') handleSaveMonthlyOpening(); }} className="w-full text-end border-0 font-black text-sm bg-transparent h-9 outline-none" placeholder="0" />
                           <select value={monthlyOpeningUnits[ing.id] || 'base'} onChange={e => setMonthlyOpeningUnits(prev => ({ ...prev, [ing.id]: e.target.value }))} className="border-0 bg-transparent text-[9px] font-black text-gray-400 uppercase w-12 outline-none">
                              <option value="base">{ing.unit}</option>
                              {allUnits.filter(u => u.ingredient_id === ing.id).map(u => (<option key={u.id} value={u.unit_name}>{u.unit_name}</option>))}
@@ -740,7 +755,7 @@ export default function Audit() {
                       </div>
                     </td>
                     <td className="px-6 py-4 border-gray-50">
-                      <input type="text" placeholder="..." value={monthlyOpeningNotes[ing.id] || ''} onChange={e => setMonthlyOpeningNotes(prev => ({ ...prev, [ing.id]: e.target.value }))} className="w-full border-b border-gray-100 bg-transparent text-[11px] font-bold py-1 outline-none" />
+                      <input type="text" placeholder="..." value={monthlyOpeningNotes[ing.id] || ''} onChange={e => setMonthlyOpeningNotes(prev => ({ ...prev, [ing.id]: e.target.value }))} onKeyDown={e => { if (e.key === 'Enter') handleSaveMonthlyOpening(); }} className="w-full border-b border-gray-100 bg-transparent text-[11px] font-bold py-1 outline-none" />
                     </td>
                   </tr>
                 ))}
@@ -1024,7 +1039,7 @@ export default function Audit() {
                       <td className="px-2 py-4 border-gray-50 min-w-[120px]">
                         <div className="flex items-center gap-1">
                           <div className="flex-1 flex items-center gap-1 bg-white border border-gray-100 rounded-xl px-2">
-                             <input type="number" step="0.000001" value={storeVal} disabled={!canEdit} onFocus={() => setActiveId(ing.id)} onBlur={() => setActiveId(null)} onChange={e => setStoreStocks(prev => ({ ...prev, [ing.id]: e.target.value }))} onWheel={e => (e.target as HTMLInputElement).blur()} onKeyDown={e => { if (e.key === 'ArrowUp' || e.key === 'ArrowDown') e.preventDefault(); }} className="w-full text-end border-0 font-black text-sm bg-transparent h-9 outline-none min-w-[40px]" placeholder="0" />
+                             <input type="number" step="0.000001" value={storeVal} disabled={!canEdit} onFocus={() => setActiveId(ing.id)} onBlur={() => setActiveId(null)} onChange={e => setStoreStocks(prev => ({ ...prev, [ing.id]: e.target.value }))} onWheel={e => (e.target as HTMLInputElement).blur()} onKeyDown={e => { if (e.key === 'ArrowUp' || e.key === 'ArrowDown') e.preventDefault(); if (e.key === 'Enter') handleSaveAudit(); }} className="w-full text-end border-0 font-black text-sm bg-transparent h-9 outline-none min-w-[40px]" placeholder="0" />
                              <select value={storeUnits[ing.id] || 'base'} disabled={!canEdit} onChange={e => setStoreUnits(prev => ({ ...prev, [ing.id]: e.target.value }))} className="border-0 bg-transparent text-[9px] font-black text-gray-400 uppercase w-12 outline-none">
                                <option value="base">{ing.unit}</option>
                                {allUnits.filter(u => u.ingredient_id === ing.id).map(u => (<option key={u.id} value={u.unit_name}>{u.unit_name}</option>))}
@@ -1040,7 +1055,7 @@ export default function Audit() {
                       <td className="px-2 py-4 border-gray-50 min-w-[120px]">
                         <div className="flex items-center gap-1">
                           <div className="flex-1 flex items-center gap-1 bg-teal-50/50 border border-teal-100 rounded-xl px-2">
-                             <input type="number" step="0.000001" value={counterVal} disabled={!canEdit} onFocus={() => setActiveId(ing.id)} onBlur={() => setActiveId(null)} onChange={e => setCounterStocks(prev => ({ ...prev, [ing.id]: e.target.value }))} onWheel={e => (e.target as HTMLInputElement).blur()} onKeyDown={e => { if (e.key === 'ArrowUp' || e.key === 'ArrowDown') e.preventDefault(); }} className="w-full text-end border-0 font-black text-sm bg-transparent h-9 outline-none min-w-[40px]" placeholder="0" />
+                             <input type="number" step="0.000001" value={counterVal} disabled={!canEdit} onFocus={() => setActiveId(ing.id)} onBlur={() => setActiveId(null)} onChange={e => setCounterStocks(prev => ({ ...prev, [ing.id]: e.target.value }))} onWheel={e => (e.target as HTMLInputElement).blur()} onKeyDown={e => { if (e.key === 'ArrowUp' || e.key === 'ArrowDown') e.preventDefault(); if (e.key === 'Enter') handleSaveAudit(); }} className="w-full text-end border-0 font-black text-sm bg-transparent h-9 outline-none min-w-[40px]" placeholder="0" />
                              <select value={counterUnits[ing.id] || 'base'} disabled={!canEdit} onChange={e => setCounterUnits(prev => ({ ...prev, [ing.id]: e.target.value }))} className="border-0 bg-transparent text-[9px] font-black text-gray-400 uppercase w-12 outline-none">
                                <option value="base">{ing.unit}</option>
                                {allUnits.filter(u => u.ingredient_id === ing.id).map(u => (<option key={u.id} value={u.unit_name}>{u.unit_name}</option>))}
@@ -1109,7 +1124,7 @@ export default function Audit() {
                         value={calcValues[u.id] || ''}
                         onChange={e => setCalcValues(prev => ({ ...prev, [u.id]: e.target.value }))}
                         onWheel={e => (e.target as HTMLInputElement).blur()}
-                        onKeyDown={e => { if (e.key === 'ArrowUp' || e.key === 'ArrowDown') e.preventDefault(); }}
+                        onKeyDown={e => { if (e.key === 'ArrowUp' || e.key === 'ArrowDown') e.preventDefault(); if (e.key === 'Enter') applyCalc(); }}
                         placeholder="0"
                         className="w-full bg-gray-50 border border-gray-100 rounded-xl px-3 py-2 text-end font-black text-sm text-teal-700 outline-none focus:ring-2 focus:ring-teal-500/20 transition-all"
                       />
@@ -1131,7 +1146,7 @@ export default function Audit() {
                       value={calcValues['base'] || ''}
                       onChange={e => setCalcValues(prev => ({ ...prev, 'base': e.target.value }))}
                       onWheel={e => (e.target as HTMLInputElement).blur()}
-                      onKeyDown={e => { if (e.key === 'ArrowUp' || e.key === 'ArrowDown') e.preventDefault(); }}
+                      onKeyDown={e => { if (e.key === 'ArrowUp' || e.key === 'ArrowDown') e.preventDefault(); if (e.key === 'Enter') applyCalc(); }}
                       placeholder="0"
                       className="w-full bg-gray-50 border border-gray-100 rounded-xl px-3 py-2 text-end font-black text-sm text-teal-700 outline-none focus:ring-2 focus:ring-teal-500/20 transition-all"
                     />

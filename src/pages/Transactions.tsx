@@ -181,6 +181,51 @@ export default function Transactions() {
 
   useEffect(() => { fetchData(); }, [filterDateFrom, filterDateTo, filterType, filterBranch, filterStatus]);
 
+  // Tự động tải doanh thu ngày cho phiếu hủy (WASTE) khi ngày thay đổi hoặc chuyển sang loại Hủy hàng
+  useEffect(() => {
+    if (txType !== 'WASTE' || !txDate) return;
+
+    const fetchDailyRevenue = async () => {
+      // 1. Thử hiển thị từ cache trước để có trải nghiệm mượt mà không có độ trễ
+      const cached = localStorage.getItem(`daily_revenue_${txDate}`);
+      if (cached) {
+        setTxRevenue(cached);
+      } else {
+        setTxRevenue('');
+      }
+
+      // 2. Truy vấn từ database để đảm bảo tính chính xác tuyệt đối (đề phòng trường hợp đã xóa phiếu/dọn dẹp dữ liệu)
+      try {
+        const { data, error } = await supabase
+          .from('stock_transactions')
+          .select('notes')
+          .eq('transaction_date', txDate)
+          .eq('type', 'SALES_USAGE')
+          .is('ingredient_id', null)
+          .limit(1);
+
+        if (!error && data && data[0]?.notes) {
+          const match = data[0].notes.match(/^\[REVENUE: ([\d,.]+)\]/);
+          if (match) {
+            const rev = match[1].replace(/,/g, '');
+            setTxRevenue(rev);
+            localStorage.setItem(`daily_revenue_${txDate}`, rev);
+          } else {
+            setTxRevenue('');
+            localStorage.removeItem(`daily_revenue_${txDate}`);
+          }
+        } else {
+          setTxRevenue('');
+          localStorage.removeItem(`daily_revenue_${txDate}`);
+        }
+      } catch (err) {
+        console.error('Lỗi khi tải doanh thu ngày:', err);
+      }
+    };
+
+    fetchDailyRevenue();
+  }, [txDate, txType]);
+
   if (role === 'staff') {
     return <Navigate to="/audit" replace />;
   }
