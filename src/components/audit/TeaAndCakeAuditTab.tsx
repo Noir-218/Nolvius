@@ -478,8 +478,6 @@ export const TeaAndCakeAuditTab: React.FC<Props> = ({ selectedDate }) => {
 
             <tbody>
               {sectionGroups.map((group, groupIdx) => {
-                const rowCount = group.lots.length;
-
                 return group.lots.map((lot, lotIdx) => {
                   const isFirstRow = lotIdx === 0;
                   const status = getStatus(lot, type);
