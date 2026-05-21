@@ -161,6 +161,7 @@ export type Database = {
           name: string
           order_type_id: string | null
           reorder_cycle_days: number | null
+          substitute_id: string | null
           supplier_id: string | null
           unit: string
           unit_price: number | null
@@ -174,6 +175,7 @@ export type Database = {
           name: string
           order_type_id?: string | null
           reorder_cycle_days?: number | null
+          substitute_id?: string | null
           supplier_id?: string | null
           unit: string
           unit_price?: number | null
@@ -187,6 +189,7 @@ export type Database = {
           name?: string
           order_type_id?: string | null
           reorder_cycle_days?: number | null
+          substitute_id?: string | null
           supplier_id?: string | null
           unit?: string
           unit_price?: number | null

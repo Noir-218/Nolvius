@@ -54,24 +54,24 @@ const daysLeft = (expiryDate: string): number | null => {
 interface StatusCfg {
   label: string;
   Icon: React.ElementType;
-  chip: string;   // classes for badge
-  cell: string;   // classes for the status cell bg
+  chip: string;   // text classes
+  cell: string;   // full cell background class
 }
 
 const TEA_STATUS = (d: number | null): StatusCfg => {
-  if (d === null) return { label: '—', Icon: Clock, chip: 'text-gray-400', cell: '' };
-  if (d > 2) return { label: 'Ok', Icon: CheckCircle2, chip: 'text-emerald-700 font-bold', cell: '' };
-  if (d === 2) return { label: 'Test', Icon: FlaskConical, chip: 'text-teal-700 font-bold', cell: 'bg-teal-50' };
-  if (d === 1) return { label: 'AM/QC Test', Icon: AlertTriangle, chip: 'text-amber-700 font-bold', cell: 'bg-amber-50' };
-  if (d === 0) return { label: 'Hủy - Hết hạn hôm nay', Icon: AlertCircle, chip: 'text-red-600 font-bold', cell: 'bg-red-100' };
-  return { label: 'Hủy/Quá hạn', Icon: XCircle, chip: 'text-red-600 font-bold', cell: 'bg-red-100' };
+  if (d === null) return { label: '—', Icon: Clock, chip: 'text-slate-400 font-bold', cell: 'bg-[#cfe2f3]' };
+  if (d > 2) return { label: 'Ok', Icon: CheckCircle2, chip: 'text-emerald-800 font-extrabold text-[12px]', cell: 'bg-[#cfe2f3]' };
+  if (d === 2) return { label: 'Test/Điều chuyển', Icon: FlaskConical, chip: 'text-amber-800 font-extrabold text-[12px]', cell: 'bg-[#ffe599]' };
+  if (d === 1) return { label: 'AM/QC Test', Icon: AlertTriangle, chip: 'text-red-800 font-extrabold text-[12px]', cell: 'bg-[#f4c7c3]' };
+  if (d === 0) return { label: 'Cút luôn - Hết hạn hôm nay', Icon: AlertCircle, chip: 'text-white font-extrabold text-[12px]', cell: 'bg-[#cc0000]' };
+  return { label: 'Cút luôn - Quá hạn', Icon: XCircle, chip: 'text-white font-extrabold text-[12px]', cell: 'bg-[#cc0000]' };
 };
 
 const CAKE_STATUS = (d: number | null): StatusCfg => {
-  if (d === null) return { label: '—', Icon: Clock, chip: 'text-gray-400', cell: '' };
-  if (d > 0) return { label: 'Ok', Icon: CheckCircle2, chip: 'text-emerald-700 font-bold', cell: '' };
-  if (d === 0) return { label: 'Hết hạn ngay', Icon: AlertCircle, chip: 'text-red-600 font-bold', cell: 'bg-red-100' };
-  return { label: 'Đã hết hạn', Icon: XCircle, chip: 'text-red-600 font-bold', cell: 'bg-red-100' };
+  if (d === null) return { label: '—', Icon: Clock, chip: 'text-slate-400 font-bold', cell: 'bg-[#cfe2f3]' };
+  if (d > 0) return { label: 'Ok', Icon: CheckCircle2, chip: 'text-emerald-800 font-extrabold text-[12px]', cell: 'bg-[#cfe2f3]' };
+  if (d === 0) return { label: 'Hết hạn ngay', Icon: AlertCircle, chip: 'text-white font-extrabold text-[12px]', cell: 'bg-[#cc0000]' };
+  return { label: 'Đã hết hạn', Icon: XCircle, chip: 'text-white font-extrabold text-[12px]', cell: 'bg-[#cc0000]' };
 };
 
 const getStatus = (lot: AuditLot, type: ItemType): StatusCfg => {
@@ -91,9 +91,6 @@ const newLot = (ingId: string, type: ItemType, date: string): AuditLot => ({
 
 const CATEGORY_NAME = 'Trà & Bánh';
 
-// ─── MAX empty rows per ingredient (để bảng trông đều) ───────────────────────
-const MIN_ROWS = 1; // Hiển thị số dòng thực tế, không ép buộc 2 dòng để bảng gọn gàng hơn
-
 interface Props {
   selectedDate: string;
 }
@@ -102,6 +99,7 @@ export const TeaAndCakeAuditTab: React.FC<Props> = ({ selectedDate }) => {
   const { user } = useAuth();
   const today = todayStr();
 
+  const [editingMfg, setEditingMfg] = useState<{ ingId: string, lotIdx: number } | null>(null);
   const [groups, setGroups] = useState<IngredientGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -415,158 +413,175 @@ export const TeaAndCakeAuditTab: React.FC<Props> = ({ selectedDate }) => {
     return (
       <div 
         ref={isTea ? teaRef : cakeRef}
-        className={`rounded-lg border shadow-sm mb-8 ${isTea ? 'border-slate-300' : 'border-amber-300'} overflow-hidden bg-white`}
+        className="rounded-none border border-slate-400 mb-8 overflow-hidden bg-white p-3 shadow-md"
+        style={{ width: '100%', maxWidth: '890px', margin: '0 auto' }}
       >
-        {/* Section title bar */}
-        <div className={`px-4 py-2 flex items-center justify-between ${isTea ? 'bg-slate-50 border-b border-slate-300' : 'bg-amber-50 border-b border-amber-300'}`}>
-          <div className="flex items-center gap-2">
-            <span className={`font-black text-[13px] tracking-tight ${isTea ? 'text-slate-700' : 'text-amber-800'}`}>
-              {isTea ? '📊 BẢNG KIỂM TRÀ' : '📊 BẢNG KIỂM BÁNH'}
-            </span>
-            <span className="text-[11px] text-slate-400 font-medium italic">
-              (HSD = {SHELF_LIFE[type]} ngày)
-            </span>
-          </div>
-          
+        {/* Visual Export Button & Caption */}
+        <div className="flex justify-between items-center mb-2 px-1" data-html2canvas-ignore="true">
+          <span className="text-[12px] font-bold text-slate-500 tracking-tight uppercase">
+            {isTea ? '📊 Bảng tính kiểm trà (HSD = 5 ngày)' : '🍰 Bảng tính kiểm bánh (HSD = 2 ngày)'}
+          </span>
           <button
             onClick={() => handleExportImage(type)}
-            data-html2canvas-ignore="true"
-            className={`flex items-center gap-1.5 px-3 py-1 rounded border text-[11px] font-bold uppercase transition-all shadow-sm ${
-              isTea 
-                ? 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50' 
-                : 'bg-white text-amber-700 border-amber-300 hover:bg-amber-50'
-            }`}
+            className="flex items-center gap-1.5 px-3 py-1 bg-white border border-slate-300 rounded hover:bg-slate-50 text-[11px] font-bold uppercase transition-all shadow-sm text-slate-600 active:scale-95"
           >
             <Camera size={13} />
             Lưu Ảnh Bảng
           </button>
         </div>
 
-        {/* Table container */}
+        {/* Google Sheets Layout Container */}
         <div className="overflow-x-auto">
-          <table className="min-w-full text-xs border-collapse table-fixed bg-white">
-            <thead className="bg-slate-100 border-b border-slate-300">
-              <tr>
-                <th colSpan={2} className="px-3 py-2 text-left font-bold text-slate-700 border-r border-slate-300 w-80">Thông tin sản phẩm</th>
-                <th colSpan={2} className="px-3 py-2 text-center font-bold text-slate-700 border-r border-slate-300">Thông tin kiểm kê</th>
-                <th className="px-3 py-2 text-center font-bold text-slate-700 w-32 border-r border-slate-300">HSD</th>
-                <th className="px-3 py-2 text-center font-bold text-slate-700 w-40">Tình trạng</th>
-                <th className="w-8 border-l border-slate-300" data-html2canvas-ignore="true"></th>
+          <table className="google-sheets-table">
+            <colgroup>
+              <col style={{ width: '48px' }} />  {/* Column T: STT */}
+              <col style={{ width: '220px' }} /> {/* Column U: Tên trà - NVL */}
+              <col style={{ width: '100px' }} /> {/* Column V: Số lượng */}
+              <col style={{ width: '130px' }} /> {/* Column W: NSX */}
+              <col style={{ width: '140px' }} /> {/* Column X: HSD */}
+              <col style={{ width: '200px' }} /> {/* Column Y: Tình trạng */}
+              <col style={{ width: '36px' }} data-html2canvas-ignore="true" />  {/* Xóa */}
+            </colgroup>
+            
+            <thead>
+
+              {/* Centered Main Title Row inside Grid */}
+              <tr className="h-[40px] bg-white">
+                <td colSpan={6} className="text-center font-bold text-black text-[15px] border border-[#bbb] tracking-wide uppercase align-middle bg-white">
+                  {isTea ? 'KIỂM KÊ DATE TRÀ - BÁNH TỒN CUỐI NGÀY' : 'KIỂM KÊ DATE BÁNH TỒN CUỐI NGÀY'}
+                </td>
+                <td className="border border-[#bbb] bg-white" data-html2canvas-ignore="true"></td>
               </tr>
-              <tr className="bg-slate-50 text-[10px] uppercase tracking-wider text-slate-500 border-b border-slate-300">
-                <th className="px-3 py-1.5 text-center border-r border-slate-200">Tên Nguyên Liệu</th>
-                <th className="px-2 py-1.5 text-center border-r border-slate-300 w-16">ĐVT</th>
-                <th className="px-2 py-1.5 text-center border-r border-slate-200 w-24">Số lượng</th>
-                <th className="px-2 py-1.5 text-center border-r border-slate-300 w-40">Ngày sản xuất</th>
-                <th className="border-r border-slate-200"></th>
-                <th className=""></th>
-                <th className="border-l border-slate-300" data-html2canvas-ignore="true"></th>
+
+              {/* Metadata Subheader row in Grid */}
+              <tr className="h-[32px] bg-white text-[12px] align-middle">
+                <td colSpan={2} className="px-3 border border-[#bbb] font-bold text-black text-left bg-white">
+                  NGÀY: <span className="text-[#cc0000] ml-1">{format(parseISO(selectedDate), 'dd/MM/yyyy')}</span>
+                </td>
+                <td colSpan={4} className="px-3 border border-[#bbb] font-bold text-black text-left bg-white">
+                  NGƯỜI KIỂM: <span className="text-[#666] font-normal">{user?.email || '........................................................................'}</span>
+                </td>
+                <td className="border border-[#bbb] bg-white" data-html2canvas-ignore="true"></td>
+              </tr>
+
+              {/* Main Headers row */}
+              <tr className="bg-white text-[12px] font-bold text-black text-center h-[32px] align-middle">
+                <td className="border border-[#bbb] uppercase bg-white">STT</td>
+                <td className="border border-[#bbb] uppercase bg-white">TÊN TRÀ - NVL</td>
+                <td className="border border-[#bbb] uppercase bg-white">SỐ LƯỢNG</td>
+                <td className="border border-[#bbb] uppercase bg-white">NSX</td>
+                <td className="border border-[#bbb] uppercase bg-white">HSD</td>
+                <td className="border border-[#bbb] uppercase bg-white">TÌNH TRẠNG</td>
+                <td className="border border-[#bbb] bg-white" data-html2canvas-ignore="true"></td>
               </tr>
             </thead>
-            <tbody>
-              {sectionGroups.map((group) => {
-                const displayLots = [...group.lots];
-                while (displayLots.length < MIN_ROWS) {
-                  displayLots.push({ ingredient_id: group.ingredient_id, manufacture_date: '', expiry_date: '', quantity: '', notes: '' });
-                }
-                const rowCount = displayLots.length;
 
-                return displayLots.map((lot, lotIdx) => {
-                  const isReal = lotIdx < group.lots.length;
+            <tbody>
+              {sectionGroups.map((group, groupIdx) => {
+                const rowCount = group.lots.length;
+
+                return group.lots.map((lot, lotIdx) => {
                   const isFirstRow = lotIdx === 0;
-                  const isLastRowInGroup = lotIdx === rowCount - 1;
-                  const status = isReal ? getStatus(lot, type) : null;
+                  const status = getStatus(lot, type);
                   const StatusIcon = status?.Icon;
-                  const borderClass = isLastRowInGroup ? 'border-b-2 border-slate-300' : 'border-b border-slate-100';
 
                   return (
                     <tr 
                       key={`${group.ingredient_id}-${lotIdx}`} 
-                      className="group/row transition-colors hover:bg-teal-50/40"
+                      className="hover:bg-slate-50 transition-colors h-[32px] bg-white"
                     >
-                      {/* Tên NVL */}
-                      {isFirstRow && (
-                        <>
-                          <td
-                            rowSpan={rowCount}
-                            className={`px-3 py-2 border-r border-slate-200 bg-white align-middle text-center ${borderClass}`}
-                          >
-                            <div className="flex flex-col items-center justify-center min-h-[2.5rem]">
-                              <div className="font-bold text-slate-800 text-[12px] leading-tight">{group.ingredient_name}</div>
-                              <button
-                                onClick={() => addLot(group.ingredient_id)}
-                                className="mt-1 flex items-center gap-1 text-[10px] font-bold text-teal-600 hover:text-teal-800 hover:underline transition-all opacity-40 hover:opacity-100"
-                              >
-                                <Plus size={10} /> Thêm lô
-                              </button>
-                            </div>
-                          </td>
-                          <td rowSpan={rowCount} className={`px-2 py-2 text-center text-slate-500 font-medium border-r border-slate-300 bg-white align-middle w-16 ${borderClass}`}>
-                            {group.unit}
-                          </td>
-                        </>
-                      )}
-
-                      {/* Số lượng */}
-                      <td className={`px-1 py-1 text-center border-r border-slate-200 ${!isReal ? 'bg-slate-50/20' : ''} ${borderClass}`}>
-                        {isReal ? (
-                          <input
-                            type="number"
-                            min="0"
-                            value={lot.quantity}
-                            onChange={e => updateLot(group.ingredient_id, lotIdx, 'quantity', e.target.value === '' ? '' : Number(e.target.value))}
-                            onWheel={e => (e.target as HTMLInputElement).blur()}
-                            onKeyDown={e => { if (e.key === 'ArrowUp' || e.key === 'ArrowDown') e.preventDefault(); }}
-                            className="w-full h-8 text-center bg-transparent border-0 focus:ring-1 focus:ring-teal-400 focus:bg-white rounded py-0 font-bold text-slate-800 text-sm outline-none leading-8"
-                            placeholder="0"
-                          />
-                        ) : null}
+                      {/* STT (T) */}
+                      <td className="border border-[#bbb] bg-white align-middle text-center font-bold text-slate-800 text-[13px] text-cell">
+                        {isFirstRow ? groupIdx + 1 : ''}
                       </td>
 
-                      {/* NSX */}
-                      <td className={`px-1 py-1 text-center border-r border-slate-300 ${!isReal ? 'bg-slate-50/20' : ''} ${borderClass}`}>
-                        {isReal ? (
+                      {/* TÊN TRÀ - NVL (U) */}
+                      <td className="border border-[#bbb] bg-white align-middle text-center text-cell">
+                        {isFirstRow ? (
+                          <div className="flex flex-col items-center justify-center min-h-[3rem] py-1">
+                            <div className="font-bold text-slate-900 text-[13px] leading-tight mb-1">{group.ingredient_name} ({group.unit})</div>
+                            <button
+                              onClick={() => addLot(group.ingredient_id)}
+                              className="flex items-center gap-1 text-[11px] font-bold text-emerald-600 hover:text-emerald-800 hover:underline transition-all py-0.5 px-1.5 bg-emerald-50 rounded border border-emerald-100 hover:bg-emerald-100"
+                              data-html2canvas-ignore="true"
+                            >
+                              <Plus size={11} /> Thêm lô
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="text-slate-400 text-[11px] font-bold italic py-2">
+                            Lô {lotIdx + 1}
+                          </div>
+                        )}
+                      </td>
+
+                      {/* SỐ LƯỢNG (V) */}
+                      <td className="border border-[#bbb] bg-white p-0 text-center h-[32px]">
+                        <input
+                          type="number"
+                          min="0"
+                          value={lot.quantity}
+                          onChange={e => updateLot(group.ingredient_id, lotIdx, 'quantity', e.target.value === '' ? '' : Number(e.target.value))}
+                          onWheel={e => (e.target as HTMLInputElement).blur()}
+                          onKeyDown={e => { if (e.key === 'ArrowUp' || e.key === 'ArrowDown') e.preventDefault(); }}
+                          className="sheets-input font-bold text-[13px] text-center"
+                          placeholder="0"
+                        />
+                      </td>
+
+                      {/* NSX (W) */}
+                      <td 
+                        className="border border-[#bbb] bg-white p-0 text-center h-[32px] cursor-pointer align-middle"
+                        onClick={() => {
+                          if (!editingMfg || editingMfg.ingId !== group.ingredient_id || editingMfg.lotIdx !== lotIdx) {
+                            setEditingMfg({ ingId: group.ingredient_id, lotIdx });
+                          }
+                        }}
+                      >
+                        {editingMfg && editingMfg.ingId === group.ingredient_id && editingMfg.lotIdx === lotIdx ? (
                           <input
                             type="date"
                             value={lot.manufacture_date}
                             max={today}
+                            autoFocus
+                            onBlur={() => setEditingMfg(null)}
                             onChange={e => updateLot(group.ingredient_id, lotIdx, 'manufacture_date', e.target.value)}
-                            className="w-full h-8 bg-transparent border-0 focus:ring-1 focus:ring-teal-400 focus:bg-white rounded py-0 text-[11px] text-slate-600 font-medium outline-none text-center leading-8"
+                            className="sheets-input text-[12px] text-center font-bold text-slate-700 h-full w-full"
                           />
-                        ) : null}
-                      </td>
-
-                      {/* HSD */}
-                      <td className={`px-2 py-1 text-center border-r border-slate-200 ${!isReal ? 'bg-slate-50/20' : ''} ${borderClass}`}>
-                        {isReal && lot.expiry_date ? (
-                          <div className="h-8 flex items-center justify-center">
-                            <span className="text-slate-800 font-bold leading-none">
-                              {format(parseISO(lot.expiry_date), 'dd/MM/yy')}
-                            </span>
+                        ) : (
+                          <div className="font-bold text-[13px] text-slate-800 h-full w-full flex items-center justify-center">
+                            {lot.manufacture_date ? format(parseISO(lot.manufacture_date), 'dd/MM/yyyy') : ''}
                           </div>
+                        )}
+                      </td>
+
+                      {/* HSD (X) - Light blue background as in spreadsheet */}
+                      <td className="border border-[#bbb] bg-[#c9daf8] text-center font-bold text-[13px] text-slate-900 h-[32px]">
+                        {lot.expiry_date ? (
+                          <span>{format(parseISO(lot.expiry_date), 'dd/MM/yyyy')}</span>
                         ) : null}
                       </td>
 
-                      {/* Tình trạng */}
-                      <td className={`px-3 py-1 text-center ${status?.cell ?? ''} ${!isReal ? 'bg-slate-50/20' : ''} ${borderClass}`}>
-                        {isReal && status && StatusIcon ? (
-                          <div className={`flex items-center justify-center gap-1.5 h-8 text-[11px] font-bold ${status.chip}`}>
-                            <StatusIcon size={12} className="shrink-0" />
+                      {/* TÌNH TRẠNG (Y) - Filled background with highlighted badge */}
+                      <td 
+                        className={`border border-[#bbb] text-center font-bold text-[12px] h-[32px] align-middle ${status ? status.cell : 'bg-[#c9daf8]'}`}
+                      >
+                        {status && StatusIcon ? (
+                          <div className={`flex items-center justify-center gap-1.5 h-full w-full py-1 ${status.chip}`}>
+                            <StatusIcon size={14} className="shrink-0" />
                             <span className="leading-none">{status.label}</span>
                           </div>
                         ) : null}
                       </td>
 
-                      {/* Xóa */}
-                      <td className={`px-1 py-1 text-center border-l border-slate-100 ${borderClass}`}>
-                        {isReal && (
-                          <button
-                            onClick={() => removeLot(group.ingredient_id, lotIdx)}
-                            className="p-1 text-slate-300 hover:text-red-500 transition-colors opacity-40 hover:opacity-100"
-                          >
-                            <Trash2 size={12} />
-                          </button>
-                        )}
+                      {/* XÓA LÔ (HTML2Canvas ignored) */}
+                      <td className="border border-[#bbb] bg-white text-center p-0 align-middle h-[32px]" data-html2canvas-ignore="true">
+                        <button
+                          onClick={() => removeLot(group.ingredient_id, lotIdx)}
+                          className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition-all active:scale-95"
+                        >
+                          <Trash2 size={13} />
+                        </button>
                       </td>
                     </tr>
                   );
@@ -616,7 +631,7 @@ export const TeaAndCakeAuditTab: React.FC<Props> = ({ selectedDate }) => {
 
       {/* Warning badges */}
       {(expiredCount > 0 || todayCount > 0 || warnCount > 0) && (
-        <div className="flex flex-wrap gap-3 mb-5">
+        <div className="flex flex-wrap gap-3 mb-5" data-html2canvas-ignore="true">
           {expiredCount > 0 && (
             <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-2">
               <XCircle size={15} className="text-red-500" />
@@ -658,30 +673,78 @@ export const TeaAndCakeAuditTab: React.FC<Props> = ({ selectedDate }) => {
 
       {/* Legend */}
       {!loading && groups.length > 0 && (
-        <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 mt-2">
+        <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 mt-2" data-html2canvas-ignore="true">
           <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2.5">Chú giải tình trạng</p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5 text-xs text-gray-500">
             <div>
               <p className="font-bold text-gray-600 mb-1.5">🍵 Trà — NSX + 5 ngày</p>
               <ul className="space-y-1">
-                <li className="flex items-center gap-2"><CheckCircle2 size={12} className="text-emerald-500 shrink-0" /> Còn &gt; 2 ngày → <strong className="text-emerald-700">Ok</strong></li>
-                <li className="flex items-center gap-2"><FlaskConical size={12} className="text-teal-500 shrink-0" />    Còn 2 ngày → <strong className="text-teal-700">Test</strong></li>
-                <li className="flex items-center gap-2"><AlertTriangle size={12} className="text-amber-500 shrink-0" />  Còn 1 ngày → <strong className="text-amber-700">AM/QC Test</strong></li>
-                <li className="flex items-center gap-2"><AlertCircle size={12} className="text-red-500 shrink-0" />     Còn 0 ngày → <strong className="text-red-600">Hủy - Hết hạn hôm nay</strong></li>
-                <li className="flex items-center gap-2"><XCircle size={12} className="text-red-500 shrink-0" />     Quá hạn → <strong className="text-red-600">Đã hết hạn/Hủy</strong></li>
+                <li className="flex items-center gap-2"><CheckCircle2 size={12} className="text-[#3c763d] shrink-0" /> Còn &gt; 2 ngày → <strong className="text-emerald-800">Ok</strong> (Nền xanh nhạt)</li>
+                <li className="flex items-center gap-2"><FlaskConical size={12} className="text-[#8a6d3b] shrink-0" />    Còn 2 ngày → <strong className="text-amber-800">Test/Điều chuyển</strong> (Nền vàng)</li>
+                <li className="flex items-center gap-2"><AlertTriangle size={12} className="text-[#a94442] shrink-0" />  Còn 1 ngày → <strong className="text-red-800">AM/QC Test</strong> (Nền đỏ nhạt)</li>
+                <li className="flex items-center gap-2"><AlertCircle size={12} className="text-white shrink-0" />     Còn 0 ngày → <strong className="text-red-600">Cút luôn - Hết hạn hôm nay</strong> (Nền đỏ đậm)</li>
+                <li className="flex items-center gap-2"><XCircle size={12} className="text-white shrink-0" />     Quá hạn → <strong className="text-red-600">Cút luôn - Quá hạn</strong> (Nền đỏ đậm)</li>
               </ul>
             </div>
             <div>
               <p className="font-bold text-gray-600 mb-1.5">🍰 Bánh — NSX + 2 ngày</p>
               <ul className="space-y-1">
-                <li className="flex items-center gap-2"><CheckCircle2 size={12} className="text-emerald-500 shrink-0" /> Còn &gt; 0 ngày → <strong className="text-emerald-700">Ok</strong></li>
-                <li className="flex items-center gap-2"><AlertCircle size={12} className="text-red-500 shrink-0" />     Còn 0 ngày → <strong className="text-red-600">Hủy - Hết hạn hôm nay</strong></li>
-                <li className="flex items-center gap-2"><XCircle size={12} className="text-red-500 shrink-0" />     Quá hạn → <strong className="text-red-600">Đã hết hạn/Hủy</strong></li>
+                <li className="flex items-center gap-2"><CheckCircle2 size={12} className="text-emerald-500 shrink-0" /> Còn &gt; 0 ngày → <strong className="text-emerald-800">Ok</strong> (Nền xanh nhạt)</li>
+                <li className="flex items-center gap-2"><AlertCircle size={12} className="text-white shrink-0" />     Còn 0 ngày → <strong className="text-red-600">Hết hạn ngay</strong> (Nền đỏ đậm)</li>
+                <li className="flex items-center gap-2"><XCircle size={12} className="text-white shrink-0" />     Quá hạn → <strong className="text-red-600">Đã hết hạn</strong> (Nền đỏ đậm)</li>
               </ul>
             </div>
           </div>
         </div>
       )}
+
+      {/* Spreadsheet CSS Styling */}
+      <style>{`
+        .google-sheets-table {
+          border-collapse: collapse !important;
+          font-family: 'Arial', sans-serif !important;
+          width: 100%;
+          table-layout: fixed;
+          background-color: white;
+        }
+        .google-sheets-table th, 
+        .google-sheets-table td {
+          border: 1px solid #7f7f7f !important;
+          height: 32px;
+          vertical-align: middle;
+          box-sizing: border-box;
+        }
+        .google-sheets-table .text-cell {
+          padding: 4px 8px !important;
+        }
+        .sheets-input {
+          width: 100%;
+          height: 100%;
+          border: 0 !important;
+          background-color: transparent !important;
+          outline: none !important;
+          box-sizing: border-box;
+          padding: 0 4px !important;
+          margin: 0 !important;
+          border-radius: 0 !important;
+        }
+        .sheets-input:focus {
+          outline: 2px solid #1a73e8 !important;
+          outline-offset: -2px !important;
+          background-color: white !important;
+          z-index: 10;
+          position: relative;
+        }
+        /* Custom date picker input padding adjustment */
+        input[type="date"].sheets-input {
+          padding-left: 12px !important;
+        }
+        input[type=number]::-webkit-inner-spin-button, 
+        input[type=number]::-webkit-outer-spin-button { 
+          -webkit-appearance: none; 
+          margin: 0; 
+        }
+      `}</style>
     </div>
   );
 };

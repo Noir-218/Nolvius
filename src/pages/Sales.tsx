@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import { Upload, CheckCircle2, AlertCircle, Calendar, Trash2, Edit2, Save, X, RefreshCw, TrendingDown } from 'lucide-react';
 import * as xlsx from 'xlsx';
 import { useAuth } from '../contexts/AuthContext';
-import { format } from 'date-fns';
+import { format, parseISO, startOfMonth } from 'date-fns';
 
 interface ParsedSale {
   product_name: string;
@@ -304,7 +304,9 @@ export default function Sales() {
       }
     }
 
+    // A. Xóa các giao dịch tiêu hao cũ của ngày này để tính lại từ đầu
     await supabase.from('stock_transactions').delete().eq('transaction_date', date).eq('type', 'SALES_USAGE');
+    
     const { data: daySales } = await supabase.from('sales').select('product_id, quantity').eq('sale_date', date);
     if (!daySales || daySales.length === 0) {
       // Nếu không còn lượt bán nào mà có doanh thu lưu trữ trước đó, xóa sạch
@@ -317,9 +319,97 @@ export default function Sales() {
 
     const productIds = Object.keys(qtyByProduct);
     const { data: allRecipes } = await supabase.from('recipes').select('*').limit(10000);
-    const { data: allIngs } = await supabase.from('ingredients').select('id').limit(10000);
-    const ingIds = new Set((allIngs || []).map(i => i.id));
+    const { data: allIngs } = await supabase.from('ingredients').select('id, name, substitute_id').limit(10000);
+    if (!allIngs) return;
 
+    const ingIds = new Set(allIngs.map(i => i.id));
+    const ingredientsMap: Record<string, typeof allIngs[0]> = {};
+    allIngs.forEach(i => { ingredientsMap[i.id] = i; });
+
+    // 1. Tính toán Tồn kho khả dụng của từng nguyên liệu trước khi bán ngày date
+    const dateObj = parseISO(date);
+    const yearMonth = format(dateObj, 'yyyy-MM');
+    const monthStart = format(startOfMonth(dateObj), 'yyyy-MM-dd');
+
+    // Fetch opening stock của tháng
+    const { data: openingData } = await supabase
+      .from('monthly_opening_stock')
+      .select('ingredient_id, opening_stock')
+      .eq('year_month', yearMonth);
+    
+    const openingMap: Record<string, number> = {};
+    if (openingData) {
+      openingData.forEach(m => {
+        openingMap[m.ingredient_id] = m.opening_stock ?? 0;
+      });
+    }
+
+    // Fetch audits trước ngày date (audit_date < date)
+    const { data: auditsData } = await supabase
+      .from('stock_audits')
+      .select('ingredient_id, actual_stock, audit_date')
+      .lt('audit_date', date)
+      .order('audit_date', { ascending: false })
+      .order('created_at', { ascending: false });
+
+    // Map chứa audit mới nhất trước ngày date của từng nguyên liệu
+    const latestAuditMap: Record<string, { actual_stock: number, audit_date: string }> = {};
+    if (auditsData) {
+      auditsData.forEach(a => {
+        if (a.ingredient_id && latestAuditMap[a.ingredient_id] === undefined) {
+          latestAuditMap[a.ingredient_id] = {
+            actual_stock: a.actual_stock ?? 0,
+            audit_date: a.audit_date
+          };
+        }
+      });
+    }
+
+    // Fetch các transactions trong tháng này từ đầu tháng đến hết ngày date
+    const { data: txsData } = await supabase
+      .from('stock_transactions')
+      .select('ingredient_id, type, quantity, transaction_date')
+      .gte('transaction_date', monthStart)
+      .lte('transaction_date', date);
+
+    // Tính toán Tồn kho khả dụng
+    const availableStock: Record<string, number> = {};
+    allIngs.forEach(ing => {
+      const audit = latestAuditMap[ing.id];
+      let stock = 0;
+      if (audit) {
+        stock = audit.actual_stock;
+        if (txsData) {
+          txsData.forEach(tx => {
+            if (tx.ingredient_id === ing.id && tx.transaction_date > audit.audit_date) {
+              const qty = Number(tx.quantity);
+              if (['IN', 'IN_TRANSFER'].includes(tx.type)) {
+                stock += qty;
+              } else {
+                stock -= Math.abs(qty);
+              }
+            }
+          });
+        }
+      } else {
+        stock = openingMap[ing.id] ?? 0;
+        if (txsData) {
+          txsData.forEach(tx => {
+            if (tx.ingredient_id === ing.id) {
+              const qty = Number(tx.quantity);
+              if (['IN', 'IN_TRANSFER'].includes(tx.type)) {
+                stock += qty;
+              } else {
+                stock -= Math.abs(qty);
+              }
+            }
+          });
+        }
+      }
+      availableStock[ing.id] = stock;
+    });
+
+    // 2. Tính toán lượng tiêu hao định lượng thô dựa trên file bán hàng
     const totalUsage: Record<string, number> = {};
 
     const resolve = (pid: string, qty: number, visited: Set<string> = new Set()) => {
@@ -346,12 +436,52 @@ export default function Sales() {
       resolve(pid, saleQty);
     });
 
-    const txInserts = Object.entries(totalUsage).map(([ingId, qty]) => ({
+    // 3. Phân bổ tiêu hao dựa trên thuật toán FIFO Trừ Kho Thông Minh (Nguyên Liệu Thay Thế)
+    const finalUsage: Record<string, number> = {};
+
+    Object.entries(totalUsage).forEach(([ingId, qty]) => {
+      let currentId = ingId;
+      let needed = qty;
+      const visitedChain = new Set<string>();
+
+      while (needed > 0) {
+        visitedChain.add(currentId);
+        const ingredient = ingredientsMap[currentId];
+        const stock = availableStock[currentId] ?? 0;
+        const successorId = ingredient?.substitute_id;
+
+        if (successorId && !visitedChain.has(successorId)) {
+          // Có nguyên liệu thay thế cấu hình: Chỉ trừ tối đa số lượng tồn khả dụng (nếu > 0)
+          const availableToTake = Math.max(0, stock);
+          const taken = Math.min(needed, availableToTake);
+
+          if (taken > 0) {
+            finalUsage[currentId] = (finalUsage[currentId] || 0) + taken;
+            needed -= taken;
+            availableStock[currentId] -= taken;
+          }
+
+          if (needed > 0) {
+            // Chuyển sang nguyên liệu thay thế kế nhiệm
+            currentId = successorId;
+          }
+        } else {
+          // Không còn nguyên liệu thay thế (hoặc bị vòng lặp vô hạn):
+          // Trừ toàn bộ lượng còn thiếu vào nguyên liệu này (cho phép tồn âm)
+          finalUsage[currentId] = (finalUsage[currentId] || 0) + needed;
+          availableStock[currentId] -= needed;
+          needed = 0;
+        }
+      }
+    });
+
+    // 4. Tạo các giao dịch stock_transactions loại SALES_USAGE
+    const txInserts = Object.entries(finalUsage).map(([ingId, qty]) => ({
       ingredient_id: ingId,
       type: 'SALES_USAGE',
       quantity: -qty,
       transaction_date: date,
-      notes: `Đồng bộ tiêu hao ngày ${date}`,
+      notes: `Đồng bộ tiêu hao ngày ${date} (Tự động FIFO)`,
       created_by: user?.id
     }));
 

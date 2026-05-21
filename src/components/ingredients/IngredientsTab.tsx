@@ -27,7 +27,7 @@ export const IngredientsTab = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [formData, setFormData] = useState({
-    id: '', name: '', category_id: '', unit: '', min_stock: 0, order_type_id: '', unit_price: 0
+    id: '', name: '', category_id: '', unit: '', min_stock: 0, order_type_id: '', unit_price: 0, substitute_id: ''
   });
   const [conversionUnits, setConversionUnits] = useState<{ id?: string, unit_name: string, conversion_factor: number }[]>([]);
 
@@ -92,13 +92,16 @@ export const IngredientsTab = () => {
       ...formData,
       category_id: formData.category_id || null,
       order_type_id: formData.order_type_id || null,
+      substitute_id: formData.substitute_id || null,
     };
-    // Remove reorder_cycle_days from payload since it's being replaced
+    // Remove unsupported columns from payload
     delete (payload as any).reorder_cycle_days;
 
     try {
       if (editingId) {
-        await supabase.from('ingredients').update(payload).eq('id', editingId);
+        const { error: updateErr } = await supabase.from('ingredients').update(payload).eq('id', editingId);
+        if (updateErr) throw updateErr;
+
         // Update conversion units
         // Simple approach: delete all and re-insert
         await supabase.from('ingredient_units').delete().eq('ingredient_id', editingId);
@@ -111,7 +114,8 @@ export const IngredientsTab = () => {
               conversion_factor: u.conversion_factor
             }));
           if (unitsToInsert.length > 0) {
-            await supabase.from('ingredient_units').insert(unitsToInsert);
+            const { error: insertUnitsErr } = await supabase.from('ingredient_units').insert(unitsToInsert);
+            if (insertUnitsErr) throw insertUnitsErr;
           }
         }
       } else {
@@ -128,7 +132,8 @@ export const IngredientsTab = () => {
               conversion_factor: u.conversion_factor
             }));
           if (unitsToInsert.length > 0) {
-            await supabase.from('ingredient_units').insert(unitsToInsert);
+            const { error: insertUnitsErr } = await supabase.from('ingredient_units').insert(unitsToInsert);
+            if (insertUnitsErr) throw insertUnitsErr;
           }
         }
       }
@@ -156,14 +161,15 @@ export const IngredientsTab = () => {
         unit: ing.unit,
         min_stock: ing.min_stock || 0,
         unit_price: ing.unit_price || 0,
-        order_type_id: (ing as any).order_type_id || ''
+        order_type_id: (ing as any).order_type_id || '',
+        substitute_id: ing.substitute_id || ''
       });
       // Fetch conversion units
       const { data } = await supabase.from('ingredient_units').select('*').eq('ingredient_id', ing.id);
       setConversionUnits(data || []);
     } else {
       setEditingId(null);
-      setFormData({ id: '', name: '', category_id: '', unit: '', min_stock: 0, order_type_id: '', unit_price: 0 });
+      setFormData({ id: '', name: '', category_id: '', unit: '', min_stock: 0, order_type_id: '', unit_price: 0, substitute_id: '' });
       setConversionUnits([]);
     }
     setIsModalOpen(true);
@@ -417,7 +423,16 @@ export const IngredientsTab = () => {
               ingredients.map((ing) => (
                 <tr key={ing.id}>
                   <td className="px-4 py-3 font-monospace text-muted">{ing.id}</td>
-                  <td className="px-4 py-3 fw-bold text-dark">{ing.name}</td>
+                  <td className="px-4 py-3 fw-bold text-dark">
+                    {ing.name}
+                    {ing.substitute_id && (
+                      <div className="small text-muted fw-normal mt-0.5" style={{ fontSize: '10px' }}>
+                        <span className="badge bg-info bg-opacity-10 text-info border border-info border-opacity-20" style={{ fontSize: '9px' }}>
+                          ➜ Thay bằng: {ingredients.find(i => i.id === ing.substitute_id)?.name || ing.substitute_id}
+                        </span>
+                      </div>
+                    )}
+                  </td>
                   <td className="px-4 py-3">
                     <span className="badge bg-light text-dark border fw-normal">{ing.ingredient_categories?.name || '-'}</span>
                   </td>
@@ -450,7 +465,7 @@ export const IngredientsTab = () => {
           </tbody>
         </table>
       </div>
-
+ 
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editingId ? 'Sửa Nguyên Liệu' : 'Thêm Nguyên Liệu'}>
         <form onSubmit={handleSubmit} className="row g-3">
           <div className="col-12 col-md-6">
@@ -481,6 +496,21 @@ export const IngredientsTab = () => {
             >
               <option value="">-- Chọn --</option>
               {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+          <div className="col-12">
+            <label className="form-label small fw-bold text-muted">Nguyên Liệu Thay Thế (Khi hết tồn kho)</label>
+            <select 
+              value={formData.substitute_id} 
+              onChange={e => setFormData({ ...formData, substitute_id: e.target.value })} 
+              className="form-select border-primary-subtle"
+            >
+              <option value="">-- Không --</option>
+              {ingredients
+                .filter(i => i.id !== editingId)
+                .map(i => (
+                  <option key={i.id} value={i.id}>{i.name} ({i.unit})</option>
+                ))}
             </select>
           </div>
           <div className="col-12 col-md-6">
