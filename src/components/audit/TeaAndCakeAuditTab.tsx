@@ -104,6 +104,7 @@ export const TeaAndCakeAuditTab: React.FC<Props> = ({ selectedDate }) => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savedIds, setSavedIds] = useState<string[]>([]);
+  const broadcastChannelRef = useRef<any>(null);
   const teaRef = useRef<HTMLDivElement>(null);
   const cakeRef = useRef<HTMLDivElement>(null);
 
@@ -171,7 +172,50 @@ export const TeaAndCakeAuditTab: React.FC<Props> = ({ selectedDate }) => {
   // Sync real-time for tea_cake_audits
   useEffect(() => {
     const channel = supabase
-      .channel('tea-cake-sync')
+      .channel('tea-cake-sync', { config: { broadcast: { self: false } } })
+      .on(
+        'broadcast',
+        { event: 'LOT_CHANGE' },
+        (payload) => {
+          const { ingId, lotIdx, field, value } = payload.payload;
+          setGroups(prev => prev.map(g => {
+            if (g.ingredient_id !== ingId) return g;
+            return {
+              ...g,
+              lots: g.lots.map((lot, i) => {
+                if (i !== lotIdx) return lot;
+                const updated = { ...lot, [field]: value };
+                if (field === 'manufacture_date') updated.expiry_date = calcExpiry(String(value), g.item_type);
+                return updated;
+              }),
+            };
+          }));
+        }
+      )
+      .on(
+        'broadcast',
+        { event: 'ADD_LOT' },
+        (payload) => {
+          const { ingId } = payload.payload;
+          setGroups(prev => prev.map(g =>
+            g.ingredient_id === ingId
+              ? { ...g, lots: [...g.lots, newLot(ingId, g.item_type, selectedDate)] }
+              : g
+          ));
+        }
+      )
+      .on(
+        'broadcast',
+        { event: 'REMOVE_LOT' },
+        (payload) => {
+          const { ingId, lotIdx } = payload.payload;
+          setGroups(prev => prev.map(g => {
+            if (g.ingredient_id !== ingId) return g;
+            if (g.lots.length === 1) return { ...g, lots: [newLot(ingId, g.item_type, selectedDate)] };
+            return { ...g, lots: g.lots.filter((_, i) => i !== lotIdx) };
+          }));
+        }
+      )
       .on(
         'postgres_changes',
         {
@@ -188,8 +232,11 @@ export const TeaAndCakeAuditTab: React.FC<Props> = ({ selectedDate }) => {
       )
       .subscribe();
 
+    broadcastChannelRef.current = channel;
+
     return () => {
       supabase.removeChannel(channel);
+      broadcastChannelRef.current = null;
     };
   }, [selectedDate, fetchData]);
 
@@ -201,6 +248,11 @@ export const TeaAndCakeAuditTab: React.FC<Props> = ({ selectedDate }) => {
         ? { ...g, lots: [...g.lots, newLot(ingId, g.item_type, selectedDate)] }
         : g
     ));
+    broadcastChannelRef.current?.send({
+      type: 'broadcast',
+      event: 'ADD_LOT',
+      payload: { ingId }
+    });
   };
 
   const removeLot = (ingId: string, lotIdx: number) => {
@@ -209,6 +261,11 @@ export const TeaAndCakeAuditTab: React.FC<Props> = ({ selectedDate }) => {
       if (g.lots.length === 1) return { ...g, lots: [newLot(ingId, g.item_type, selectedDate)] };
       return { ...g, lots: g.lots.filter((_, i) => i !== lotIdx) };
     }));
+    broadcastChannelRef.current?.send({
+      type: 'broadcast',
+      event: 'REMOVE_LOT',
+      payload: { ingId, lotIdx }
+    });
   };
 
   const updateLot = (ingId: string, lotIdx: number, field: keyof AuditLot, value: string | number) => {
@@ -224,6 +281,11 @@ export const TeaAndCakeAuditTab: React.FC<Props> = ({ selectedDate }) => {
         }),
       };
     }));
+    broadcastChannelRef.current?.send({
+      type: 'broadcast',
+      event: 'LOT_CHANGE',
+      payload: { ingId, lotIdx, field, value }
+    });
   };
 
   // ── Save ──────────────────────────────────────────────────────────────────────

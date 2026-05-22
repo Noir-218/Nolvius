@@ -55,6 +55,7 @@ export default function Audit() {
   const [monthlyOpeningNotes, setMonthlyOpeningNotes] = useState<Record<string, string>>({});
 
   const [hasMonthlyOpening, setHasMonthlyOpening] = useState(false);
+  const broadcastChannelRef = React.useRef<any>(null);
   const initialDataRef = React.useRef<{
     storeStocks: Record<string, string>;
     counterStocks: Record<string, string>;
@@ -329,7 +330,19 @@ export default function Audit() {
     if (viewMode !== 'daily') return;
 
     const channel = supabase
-      .channel('audit-changes')
+      .channel('audit-changes', { config: { broadcast: { self: false } } })
+      .on(
+        'broadcast',
+        { event: 'INPUT_CHANGE' },
+        (payload) => {
+          const { ingId, field, value } = payload.payload;
+          if (field === 'store') {
+            setStoreStocks(prev => ({ ...prev, [ingId]: value }));
+          } else if (field === 'counter') {
+            setCounterStocks(prev => ({ ...prev, [ingId]: value }));
+          }
+        }
+      )
       .on(
         'postgres_changes',
         {
@@ -364,8 +377,11 @@ export default function Audit() {
       )
       .subscribe();
 
+    broadcastChannelRef.current = channel;
+
     return () => {
       supabase.removeChannel(channel);
+      broadcastChannelRef.current = null;
     };
   }, [viewMode, selectedDate, activeId, calcModal]);
 
@@ -1114,7 +1130,17 @@ export default function Audit() {
                       <td className="px-2 py-4 border-gray-50 min-w-[120px]">
                         <div className="flex items-center gap-1">
                           <div className="flex-1 flex items-center gap-1 bg-white border border-gray-100 rounded-xl px-2">
-                             <input type="number" step="0.000001" value={storeVal} disabled={!canEdit} onFocus={() => setActiveId(ing.id)} onBlur={() => setActiveId(null)} onChange={e => setStoreStocks(prev => ({ ...prev, [ing.id]: e.target.value }))} onWheel={e => (e.target as HTMLInputElement).blur()} onKeyDown={e => { if (e.key === 'ArrowUp' || e.key === 'ArrowDown') e.preventDefault(); if (e.key === 'Enter') handleSaveAudit(); }} className="w-full text-end border-0 font-black text-sm bg-transparent h-9 outline-none min-w-[40px]" placeholder="0" />
+                             <input type="number" step="0.000001" value={storeVal} disabled={!canEdit} onFocus={() => setActiveId(ing.id)} onBlur={() => setActiveId(null)} 
+                                onChange={e => {
+                                  const val = e.target.value;
+                                  setStoreStocks(prev => ({ ...prev, [ing.id]: val }));
+                                  broadcastChannelRef.current?.send({
+                                    type: 'broadcast',
+                                    event: 'INPUT_CHANGE',
+                                    payload: { ingId: ing.id, field: 'store', value: val }
+                                  });
+                                }} 
+                                onWheel={e => (e.target as HTMLInputElement).blur()} onKeyDown={e => { if (e.key === 'ArrowUp' || e.key === 'ArrowDown') e.preventDefault(); if (e.key === 'Enter') handleSaveAudit(); }} className="w-full text-end border-0 font-black text-sm bg-transparent h-9 outline-none min-w-[40px]" placeholder="0" />
                              <select value={storeUnits[ing.id] || 'base'} disabled={!canEdit} onChange={e => setStoreUnits(prev => ({ ...prev, [ing.id]: e.target.value }))} className="border-0 bg-transparent text-[9px] font-black text-gray-400 uppercase w-12 outline-none">
                                <option value="base">{ing.unit}</option>
                                {allUnits.filter(u => u.ingredient_id === ing.id).map(u => (<option key={u.id} value={u.unit_name}>{u.unit_name}</option>))}
@@ -1130,7 +1156,17 @@ export default function Audit() {
                       <td className="px-2 py-4 border-gray-50 min-w-[120px]">
                         <div className="flex items-center gap-1">
                           <div className="flex-1 flex items-center gap-1 bg-teal-50/50 border border-teal-100 rounded-xl px-2">
-                             <input type="number" step="0.000001" value={counterVal} disabled={!canEdit} onFocus={() => setActiveId(ing.id)} onBlur={() => setActiveId(null)} onChange={e => setCounterStocks(prev => ({ ...prev, [ing.id]: e.target.value }))} onWheel={e => (e.target as HTMLInputElement).blur()} onKeyDown={e => { if (e.key === 'ArrowUp' || e.key === 'ArrowDown') e.preventDefault(); if (e.key === 'Enter') handleSaveAudit(); }} className="w-full text-end border-0 font-black text-sm bg-transparent h-9 outline-none min-w-[40px]" placeholder="0" />
+                             <input type="number" step="0.000001" value={counterVal} disabled={!canEdit} onFocus={() => setActiveId(ing.id)} onBlur={() => setActiveId(null)} 
+                                onChange={e => {
+                                  const val = e.target.value;
+                                  setCounterStocks(prev => ({ ...prev, [ing.id]: val }));
+                                  broadcastChannelRef.current?.send({
+                                    type: 'broadcast',
+                                    event: 'INPUT_CHANGE',
+                                    payload: { ingId: ing.id, field: 'counter', value: val }
+                                  });
+                                }} 
+                                onWheel={e => (e.target as HTMLInputElement).blur()} onKeyDown={e => { if (e.key === 'ArrowUp' || e.key === 'ArrowDown') e.preventDefault(); if (e.key === 'Enter') handleSaveAudit(); }} className="w-full text-end border-0 font-black text-sm bg-transparent h-9 outline-none min-w-[40px]" placeholder="0" />
                              <select value={counterUnits[ing.id] || 'base'} disabled={!canEdit} onChange={e => setCounterUnits(prev => ({ ...prev, [ing.id]: e.target.value }))} className="border-0 bg-transparent text-[9px] font-black text-gray-400 uppercase w-12 outline-none">
                                <option value="base">{ing.unit}</option>
                                {allUnits.filter(u => u.ingredient_id === ing.id).map(u => (<option key={u.id} value={u.unit_name}>{u.unit_name}</option>))}
