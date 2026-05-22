@@ -55,6 +55,11 @@ export default function Audit() {
   const [monthlyOpeningNotes, setMonthlyOpeningNotes] = useState<Record<string, string>>({});
 
   const [hasMonthlyOpening, setHasMonthlyOpening] = useState(false);
+  const initialDataRef = React.useRef<{
+    storeStocks: Record<string, string>;
+    counterStocks: Record<string, string>;
+    calcBreakdowns: Record<string, Record<string, string>>;
+  }>({ storeStocks: {}, counterStocks: {}, calcBreakdowns: {} });
   type FilterType = 'all' | 'missing' | 'variance' | 'negative';
   const [filterType, setFilterType] = useState<FilterType>('all');
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -175,6 +180,11 @@ export default function Audit() {
     setExistingAuditIds(auditIdMap);
     existingAuditIdsRef.current = auditIdMap;
     setCalcBreakdowns(calcBreakdownMap);
+    initialDataRef.current = {
+      storeStocks: { ...storeMap },
+      counterStocks: { ...counterMap },
+      calcBreakdowns: { ...calcBreakdownMap }
+    };
 
     const startOfThisMonth = format(startOfMonth(parseDate(selectedDate)), 'yyyy-MM-dd');
     const { data: priorAudits } = await supabase
@@ -316,6 +326,50 @@ export default function Audit() {
   }, []);
 
   useEffect(() => {
+    if (viewMode !== 'daily') return;
+
+    const channel = supabase
+      .channel('audit-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'stock_audits',
+          filter: `audit_date=eq.${selectedDate}`
+        },
+        (payload) => {
+          const { eventType, new: newRecord } = payload;
+          if (eventType === 'INSERT' || eventType === 'UPDATE') {
+            const audit = newRecord as any;
+            if (!audit.ingredient_id) return;
+            
+            // Only update if the user is NOT actively editing this specific ingredient
+            // to avoid jumping values while typing
+            if (activeId !== audit.ingredient_id && calcModal?.ingId !== audit.ingredient_id) {
+              setStoreStocks(prev => ({ ...prev, [audit.ingredient_id]: audit.stock_in_store?.toString() ?? '' }));
+              setCounterStocks(prev => ({ ...prev, [audit.ingredient_id]: audit.stock_in_counter?.toString() ?? '' }));
+              setExistingAuditIds(prev => ({ ...prev, [audit.ingredient_id]: audit.id }));
+              existingAuditIdsRef.current = { ...existingAuditIdsRef.current, [audit.ingredient_id]: audit.id };
+              
+              setCalcBreakdowns(prev => {
+                const next = { ...prev };
+                if (audit.store_calc_breakdown) next[`store-${audit.ingredient_id}`] = audit.store_calc_breakdown;
+                if (audit.counter_calc_breakdown) next[`counter-${audit.ingredient_id}`] = audit.counter_calc_breakdown;
+                return next;
+              });
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [viewMode, selectedDate, activeId, calcModal]);
+
+  useEffect(() => {
     if (viewMode === 'daily') fetchDailyData();
     else if (viewMode === 'opening') fetchMonthlyOpening();
     else if (viewMode === 'history') fetchHistory();
@@ -434,29 +488,50 @@ export default function Audit() {
     }
     setSaving(true);
     try {
+      // 1. Tải dữ liệu mới nhất từ DB cho các mặt hàng sắp lưu để gộp (Merge)
+      const { data: latestDbData } = await supabase
+        .from('stock_audits')
+        .select('ingredient_id, stock_in_store, stock_in_counter, store_calc_breakdown, counter_calc_breakdown')
+        .eq('audit_date', selectedDate)
+        .in('ingredient_id', filledKeys);
+
+      const latestDbMap: Record<string, any> = {};
+      if (latestDbData) {
+        latestDbData.forEach((d: any) => {
+          latestDbMap[d.ingredient_id] = d;
+        });
+      }
+
       const hugeVariances: string[] = [];
       const recordsToUpsert: TablesUpdate<'stock_audits'>[] = [];
 
       filledKeys.forEach(id => {
-        const storeIn = parseFloat(storeStocks[id]) || 0;
-        const sUnit = storeUnits[id] || 'base';
-        let sFactor = 1;
-        if (sUnit !== 'base') {
-          const unit = allUnits.find(u => u.ingredient_id === id && u.unit_name === sUnit);
-          if (unit) sFactor = unit.conversion_factor;
-        }
-        const store = Number(storeIn * sFactor) || 0;
+        const initial = initialDataRef.current;
+        const latestDb = latestDbMap[id] || {};
 
-        const counterIn = parseFloat(counterStocks[id]) || 0;
-        const cUnit = counterUnits[id] || 'base';
-        let cFactor = 1;
-        if (cUnit !== 'base') {
-          const unit = allUnits.find(u => u.ingredient_id === id && u.unit_name === cUnit);
-          if (unit) cFactor = unit.conversion_factor;
-        }
-        const counter = Number(counterIn * cFactor) || 0;
+        // Merge Logic:
+        // Nếu giá trị hiện tại TRÊN MÀN HÌNH giống hệt giá trị lúc vừa tải trang (Initial),
+        // và TRÊN DATABASE đã có giá trị mới (LatestDb), thì ta lấy giá trị mới từ DB để tránh ghi đè.
+        
+        // --- Xử lý Kho (Store) ---
+        let finalStore = parseFloat(storeStocks[id]) || 0;
+        let finalStoreBreakdown = calcBreakdowns[`store-${id}`] || null;
 
-        const actual = Number(store + counter) || 0;
+        if (storeStocks[id] === initial.storeStocks[id] && latestDb.stock_in_store !== undefined) {
+          finalStore = latestDb.stock_in_store;
+          finalStoreBreakdown = latestDb.store_calc_breakdown;
+        }
+
+        // --- Xử lý Quầy (Counter) ---
+        let finalCounter = parseFloat(counterStocks[id]) || 0;
+        let finalCounterBreakdown = calcBreakdowns[`counter-${id}`] || null;
+
+        if (counterStocks[id] === initial.counterStocks[id] && latestDb.stock_in_counter !== undefined) {
+          finalCounter = latestDb.stock_in_counter;
+          finalCounterBreakdown = latestDb.counter_calc_breakdown;
+        }
+
+        const actual = Number(finalStore + finalCounter) || 0;
         const opening = Number(openingStockMap[id]) || 0;
         const daily = dailyTx[id] || { in: 0, out: 0 };
         const theoretical = Number(opening + (Number(daily.in) || 0) - (Number(daily.out) || 0)) || 0;
@@ -470,13 +545,13 @@ export default function Audit() {
           audit_date: selectedDate,
           opening_stock: opening,
           theoretical_stock: theoretical,
-          stock_in_store: store,
-          stock_in_counter: counter,
+          stock_in_store: finalStore,
+          stock_in_counter: finalCounter,
           actual_stock: actual,
           notes: '',
           audited_by: user?.id,
-          store_calc_breakdown: calcBreakdowns[`store-${id}`] || null,
-          counter_calc_breakdown: calcBreakdowns[`counter-${id}`] || null,
+          store_calc_breakdown: finalStoreBreakdown,
+          counter_calc_breakdown: finalCounterBreakdown,
         };
 
         recordsToUpsert.push(record);

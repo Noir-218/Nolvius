@@ -135,12 +135,6 @@ const Stock = () => {
       .select('ingredient_id, type, quantity, transaction_date, branch_id')
       .gte('transaction_date', monthStart);
 
-    // Fetch branches để nhận diện "Kho Niêm Phong"
-    const { data: branches } = await supabase.from('branches').select('id, name');
-    const sealedBranchIds = branches?.filter(b => 
-      /niêm phong|niemphong|sealed|lưu trữ|luutru/i.test(b.name)
-    ).map(b => b.id) || [];
-
     const txSinceMap: Record<string, number> = {};
     const totalTxMap: Record<string, number> = {};
 
@@ -150,18 +144,7 @@ const Stock = () => {
         if (!id) return;
         
         const qty = Number(tx.quantity);
-        
-        let change = 0;
-        if (tx.type === 'IN') {
-          change = qty;
-        } else if (tx.type === 'IN_TRANSFER') {
-          // Nhận điều chuyển: Chỉ tính vào tồn tại quầy nếu không phải kho niêm phong
-          if (!sealedBranchIds.includes(tx.branch_id || '')) {
-            change = qty;
-          }
-        } else {
-          change = -Math.abs(qty);
-        }
+        const change = ['IN', 'IN_TRANSFER'].includes(tx.type) ? qty : -Math.abs(qty);
         
         // Cumulative total for the whole month (for Book Stock)
         totalTxMap[id] = (totalTxMap[id] ?? 0) + change;

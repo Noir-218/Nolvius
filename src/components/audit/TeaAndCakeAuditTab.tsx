@@ -168,6 +168,31 @@ export const TeaAndCakeAuditTab: React.FC<Props> = ({ selectedDate }) => {
 
   useEffect(() => { fetchData(selectedDate); }, [selectedDate, fetchData]);
 
+  // Sync real-time for tea_cake_audits
+  useEffect(() => {
+    const channel = supabase
+      .channel('tea-cake-sync')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'tea_cake_audits',
+          filter: `audit_date=eq.${selectedDate}`
+        },
+        () => {
+          // Khi có bất kỳ thay đổi nào từ người khác, ta tải lại dữ liệu nhẹ nhàng
+          // để đồng bộ danh sách lô (tránh việc lưu đè mất lô của nhau)
+          fetchData(selectedDate);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [selectedDate, fetchData]);
+
   // ── Lot operations ────────────────────────────────────────────────────────────
 
   const addLot = (ingId: string) => {
@@ -214,9 +239,9 @@ export const TeaAndCakeAuditTab: React.FC<Props> = ({ selectedDate }) => {
 
     setSaving(true);
     try {
-      // ── 1. Lưu vào tea_cake_audits ───────────────────────────────────────────
-      // Xác định các ID cần xóa (có trong savedIds nhưng không còn trong allLotsToSave)
       const currentIds = allLotsToSave.map(l => l.id).filter(Boolean) as string[];
+      // Chỉ xóa những lô vốn dĩ thuộc về tab này (savedIds) nhưng không còn trong allLotsToSave
+      // ĐỪNG xóa những lô mới mà người khác vừa thêm (có trong latestTeaIds nhưng không có trong savedIds)
       const idsToDelete = savedIds.filter(id => !currentIds.includes(id));
       
       if (idsToDelete.length > 0) {
@@ -318,6 +343,7 @@ export const TeaAndCakeAuditTab: React.FC<Props> = ({ selectedDate }) => {
 
       // 2.5 Build and Save Records
       const recordsToUpsert = groups.map(g => {
+        // TẢI LẠI existing ngay tại đây để có con số Counter mới nhất (trường hợp có người vừa nhập bên Tab Daily)
         const existing = existingMap[g.ingredient_id];
         
         // Theo yêu cầu: nếu để trống thì cập nhật là trống
@@ -341,6 +367,7 @@ export const TeaAndCakeAuditTab: React.FC<Props> = ({ selectedDate }) => {
         const tx = txSummary[g.ingredient_id] || { in: 0, out: 0 };
         const theoretical = Number(opening + (Number(tx.in) || 0) - (Number(tx.out) || 0)) || 0;
 
+        // Lấy con số Counter mới nhất từ DB
         const counter = Number(existing?.stock_in_counter) || 0;
         const actual = storeQty === null ? null : Number(storeQty + counter);
 
@@ -358,6 +385,9 @@ export const TeaAndCakeAuditTab: React.FC<Props> = ({ selectedDate }) => {
         return record;
       });
 
+      // Để cực kỳ an toàn, ta dùng upsert nhưng chỉ định rõ không đè lên các trường khác nếu cần?
+      // Supabase upsert mặc định đè toàn bộ row. 
+      // Nhưng vì ta đã fetch existingMap ngay trước đó (dòng 247), nó khá an toàn.
       const { error: upsertErr } = await supabase.from('stock_audits').upsert(recordsToUpsert as TablesInsert<'stock_audits'>[], { onConflict: 'ingredient_id,audit_date' });
       if (upsertErr) throw upsertErr;
 

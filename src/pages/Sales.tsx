@@ -372,12 +372,6 @@ export default function Sales() {
       .gte('transaction_date', monthStart)
       .lte('transaction_date', date);
 
-    // Fetch branches để nhận diện "Kho Niêm Phong"
-    const { data: branches } = await supabase.from('branches').select('id, name');
-    const sealedBranchIds = branches?.filter(b => 
-      /niêm phong|niemphong|sealed|lưu trữ|luutru/i.test(b.name)
-    ).map(b => b.id) || [];
-
     // Tính toán Tồn kho khả dụng
     const availableStock: Record<string, number> = {};
     allIngs.forEach(ing => {
@@ -393,13 +387,8 @@ export default function Sales() {
               // LOGIC:
               // - IN/IN_TRANSFER: Cộng vào kho nếu không phải đang nhập vào kho niêm phong (để dự phòng)
               // - Các loại khác (OUT, WASTE, SALES_USAGE): Luôn trừ kho
-              if (tx.type === 'IN') {
+              if (['IN', 'IN_TRANSFER'].includes(tx.type)) {
                 stock += qty;
-              } else if (tx.type === 'IN_TRANSFER') {
-                // Nhận điều chuyển: Chỉ cộng vào tồn bán lẻ nếu KHÔNG PHẢI là chi nhánh niêm phong
-                if (!sealedBranchIds.includes(tx.branch_id || '')) {
-                  stock += qty;
-                }
               } else {
                 stock -= Math.abs(qty);
               }
@@ -412,12 +401,8 @@ export default function Sales() {
           txsData.forEach(tx => {
             if (tx.ingredient_id === ing.id) {
               const qty = Number(tx.quantity);
-              if (tx.type === 'IN') {
+              if (['IN', 'IN_TRANSFER'].includes(tx.type)) {
                 stock += qty;
-              } else if (tx.type === 'IN_TRANSFER') {
-                if (!sealedBranchIds.includes(tx.branch_id || '')) {
-                  stock += qty;
-                }
               } else {
                 stock -= Math.abs(qty);
               }
