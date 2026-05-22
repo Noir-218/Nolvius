@@ -57,12 +57,22 @@ const Stock = () => {
       });
     }
 
-    // 0. Fetch order types
     const { data: typesData } = await supabase
       .from('ingredient_order_types')
       .select('id, name')
       .order('name');
     setOrderTypes(typesData || []);
+
+    // 0. Fetch branches to identify sealed ones
+    const { data: allBranches } = await supabase.from('branches').select('id, name');
+    const sealedBranchIds = new Set(
+      (allBranches || [])
+        .filter(b => {
+          const n = b.name.toLowerCase();
+          return n.includes('niêm phong') || n.includes('sealed') || n.includes('lưu trữ') || n.includes('kho cũ');
+        })
+        .map(b => b.id)
+    );
 
     // 1. Fetch all ingredients
     const { data: ingData } = await supabase
@@ -144,7 +154,15 @@ const Stock = () => {
         if (!id) return;
         
         const qty = Number(tx.quantity);
-        const change = ['IN', 'IN_TRANSFER'].includes(tx.type) ? qty : -Math.abs(qty);
+        let change = 0;
+        
+        if (['IN', 'IN_TRANSFER'].includes(tx.type)) {
+          if (!tx.branch_id || !sealedBranchIds.has(tx.branch_id)) {
+            change = qty;
+          }
+        } else {
+          change = -Math.abs(qty);
+        }
         
         // Cumulative total for the whole month (for Book Stock)
         totalTxMap[id] = (totalTxMap[id] ?? 0) + change;

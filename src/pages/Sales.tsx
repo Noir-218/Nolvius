@@ -322,6 +322,17 @@ export default function Sales() {
     const { data: allIngs } = await supabase.from('ingredients').select('id, name, substitute_id').limit(10000);
     if (!allIngs) return;
 
+    // Fetch branches to identify sealed ones
+    const { data: allBranches } = await supabase.from('branches').select('id, name');
+    const sealedBranchIds = new Set(
+      (allBranches || [])
+        .filter(b => {
+          const n = b.name.toLowerCase();
+          return n.includes('niêm phong') || n.includes('sealed') || n.includes('lưu trữ') || n.includes('kho cũ');
+        })
+        .map(b => b.id)
+    );
+
     const ingIds = new Set(allIngs.map(i => i.id));
     const ingredientsMap: Record<string, typeof allIngs[0]> = {};
     allIngs.forEach(i => { ingredientsMap[i.id] = i; });
@@ -385,10 +396,12 @@ export default function Sales() {
               const qty = Number(tx.quantity);
               
               // LOGIC:
-              // - IN/IN_TRANSFER: Cộng vào kho nếu không phải đang nhập vào kho niêm phong (để dự phòng)
-              // - Các loại khác (OUT, WASTE, SALES_USAGE): Luôn trừ kho
+              // - IN/IN_TRANSFER: Cộng vào kho nếu CHI NHÁNH NHẬN không phải là kho niêm phong
+              // - OUT/OUT_TRANSFER/WASTE/SALES_USAGE: Luôn trừ kho (giả định trừ từ kho đang hoạt động)
               if (['IN', 'IN_TRANSFER'].includes(tx.type)) {
-                stock += qty;
+                if (!tx.branch_id || !sealedBranchIds.has(tx.branch_id)) {
+                  stock += qty;
+                }
               } else {
                 stock -= Math.abs(qty);
               }
@@ -402,7 +415,9 @@ export default function Sales() {
             if (tx.ingredient_id === ing.id) {
               const qty = Number(tx.quantity);
               if (['IN', 'IN_TRANSFER'].includes(tx.type)) {
-                stock += qty;
+                if (!tx.branch_id || !sealedBranchIds.has(tx.branch_id)) {
+                  stock += qty;
+                }
               } else {
                 stock -= Math.abs(qty);
               }
