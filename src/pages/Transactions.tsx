@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { Plus, Search, Trash2, Edit2, X, ChevronDown, ChevronRight, Eye, Copy } from 'lucide-react';
+import { Plus, Search, Trash2, Edit2, X, ChevronDown, ChevronRight, Eye, Copy, AlertTriangle } from 'lucide-react';
 import { Modal } from '../components/ui/Modal';
 import { format, startOfMonth, parseISO } from 'date-fns';
 import { useAuth } from '../contexts/AuthContext';
@@ -1012,9 +1012,25 @@ export default function Transactions() {
                 <option value="">-- Chọn cơ sở --</option>
                 {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
               </select>
-              <p className="text-secondary opacity-75 mt-1 small italic" style={{ fontSize: '11px' }}>
-                Chọn cơ sở nơi bạn {txType === 'IN_TRANSFER' ? 'nhận hàng về' : 'chuyển hàng đi'}.
-              </p>
+              {(() => {
+                const selectedBranch = branches.find(b => b.id === txBranch);
+                const isSealed = selectedBranch && /niêm phong|niemphong|sealed|lưu trữ|luutru/i.test(selectedBranch.name);
+                if (isSealed) {
+                  return (
+                    <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded-3 text-amber-800 small d-flex items-start gap-2">
+                      <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+                      <p className="mb-0">
+                        <strong>Lưu ý:</strong> Khi điều chuyển vào <strong>{selectedBranch.name}</strong>, số hàng này sẽ được niêm phong và <strong>không tính vào tiêu hao bán lẻ</strong> hàng ngày.
+                      </p>
+                    </div>
+                  );
+                }
+                return (
+                  <p className="text-secondary opacity-75 mt-1 small italic" style={{ fontSize: '11px' }}>
+                    Chọn cơ sở nơi bạn {txType === 'IN_TRANSFER' ? 'nhận hàng về' : 'chuyển hàng đi'}.
+                  </p>
+                );
+              })()}
             </div>
           )}
 
