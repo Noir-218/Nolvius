@@ -381,7 +381,7 @@ export default function Sales() {
       .from('stock_transactions')
       .select('ingredient_id, type, quantity, transaction_date, branch_id')
       .gte('transaction_date', monthStart)
-      .lte('transaction_date', date);
+      .lte('transaction_date', date + 'T23:59:59');
 
     // Tính toán Tồn kho khả dụng
     const availableStock: Record<string, number> = {};
