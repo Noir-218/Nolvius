@@ -373,7 +373,9 @@ export const TeaAndCakeAuditTab: React.FC<Props> = ({ selectedDate }) => {
         .select('ingredient_id, type, quantity, transaction_date')
         .gte('transaction_date', startOfThisMonth)
         .lte('transaction_date', selectedDate)
-        .in('ingredient_id', ingIds);
+        .in('ingredient_id', ingIds)
+        .order('transaction_date', { ascending: true })
+        .limit(10000);
 
       const txSummary: Record<string, { in: number, out: number }> = {};
       if (txData) {

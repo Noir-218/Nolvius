@@ -379,14 +379,28 @@ export default function Sales() {
       });
     }
 
-    // Fetch các transactions từ đầu năm đến hết ngày date để đảm bảo không sót
-    // (Vì audit có thể đã từ tháng trước nếu tháng này chưa kiểm)
+    // Xác định ngày audit sớm nhất trong map để fetch tx từ đó (tránh giới hạn 1000 row của Supabase)
+    const auditDates = Object.values(latestAuditMap).map(a => a.audit_date.slice(0, 10));
+    const earliestAuditDate = auditDates.length > 0
+      ? auditDates.reduce((min, d) => d < min ? d : min, auditDates[0])
+      : format(dateObj, 'yyyy-MM-01');
+
+    const txFetchTo = date + 'T23:59:59+07:00';
     const { data: txsData } = await supabase
       .from('stock_transactions')
       .select('ingredient_id, type, quantity, transaction_date, branch_id')
-      .gte('transaction_date', '2026-01-01')
-      .lte('transaction_date', date + 'T23:59:59')
-      .limit(10000); // Tăng giới hạn txs
+      .gte('transaction_date', earliestAuditDate)
+      .lte('transaction_date', txFetchTo)
+      .order('transaction_date', { ascending: true })
+      .limit(10000);
+
+    console.log(`[SYNC DEBUG] Date: ${date}, txFetchFrom: ${earliestAuditDate}, txFetchTo: ${txFetchTo}`);
+    console.log(`[SYNC DEBUG] txsData count: ${txsData?.length ?? 'null'}`);
+    if (txsData && txsData.length > 0) {
+      console.log(`[SYNC DEBUG] tx[0]:`, JSON.stringify(txsData[0]));
+      console.log(`[SYNC DEBUG] tx[last]:`, JSON.stringify(txsData[txsData.length - 1]));
+    }
+
 
     // Tính toán Tồn kho khả dụng
     const availableStock: Record<string, number> = {};
@@ -395,25 +409,29 @@ export default function Sales() {
       let stock = 0;
       if (audit) {
         stock = audit.actual_stock;
-        if (txsData) {
-          txsData.forEach(tx => {
-            const txDate = tx.transaction_date.slice(0, 10);
-            const auditDate = audit.audit_date.slice(0, 10);
-            
-            if (tx.ingredient_id === ing.id && txDate > auditDate) {
-              const qty = Number(tx.quantity);
-              
-              if (['IN', 'IN_TRANSFER'].includes(tx.type)) {
-                if (!tx.branch_id || !sealedBranchIds.has(tx.branch_id)) {
-                  stock += qty;
-                }
-              } else {
-                // OUT, WASTE, OUT_TRANSFER, SALES_USAGE
-                stock -= Math.abs(qty);
-              }
-            }
-          });
+        const auditDate = audit.audit_date.slice(0, 10);
+        const ingTxs = txsData?.filter(tx => tx.ingredient_id === ing.id) || [];
+        
+        // DEBUG: Log cho nguyên liệu có audit
+        if (ingTxs.length > 0) {
+          console.log(`[SYNC DEBUG] Ing "${ing.name}" | audit: ${auditDate} (${stock}) | txs after audit:`,
+            ingTxs.filter(tx => tx.transaction_date.slice(0, 10) > auditDate).map(tx => `[${tx.type}] ${tx.quantity} @ ${tx.transaction_date.slice(0, 10)}`)
+          );
         }
+
+        ingTxs.forEach(tx => {
+          const txDate = tx.transaction_date.slice(0, 10);
+          if (txDate > auditDate) {
+            const qty = Number(tx.quantity);
+            if (['IN', 'IN_TRANSFER'].includes(tx.type)) {
+              if (!tx.branch_id || !sealedBranchIds.has(tx.branch_id)) {
+                stock += qty;
+              }
+            } else {
+              stock -= Math.abs(qty);
+            }
+          }
+        });
       } else {
         stock = openingMap[ing.id] ?? 0;
         if (txsData) {
@@ -433,6 +451,7 @@ export default function Sales() {
       }
       availableStock[ing.id] = stock;
     });
+    console.log('[SYNC DEBUG] availableStock sample:', JSON.stringify(Object.entries(availableStock).slice(0, 5)));
 
     // 2. Tính toán lượng tiêu hao định lượng thô dựa trên file bán hàng
     const totalUsage: Record<string, number> = {};

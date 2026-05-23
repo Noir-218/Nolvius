@@ -66,12 +66,15 @@ export default function Analysis() {
       const todayStr = format(new Date(), 'yyyy-MM-dd');
 
       // ── 1. SALES_USAGE + WASTE, lọc theo transaction_date ────────────────────
+      // Note: Supabase enforces a 1000-row server cap; .limit(10000) pushes to max allowed
       const { data: txData } = await supabase
         .from('stock_transactions')
         .select('ingredient_id, quantity, ingredients(name, unit)')
-        .in('type', ['SALES_USAGE', 'WASTE'])   // bỏ OUT
+        .in('type', ['SALES_USAGE', 'WASTE'])
         .gte('transaction_date', fromStr)
-        .lte('transaction_date', todayStr);
+        .lte('transaction_date', todayStr)
+        .order('transaction_date', { ascending: true })
+        .limit(10000);
 
       // ── 2. Stock audits trong kỳ để tính chênh lệch ──────────────────────────
       const { data: auditData } = await supabase
@@ -79,7 +82,8 @@ export default function Analysis() {
         .select('ingredient_id, actual_stock, audit_date, ingredients(name, unit)')
         .gte('audit_date', fromStr)
         .lte('audit_date', todayStr)
-        .order('audit_date', { ascending: true });
+        .order('audit_date', { ascending: true })
+        .limit(10000);
 
       // ── Tổng SALES_USAGE + WASTE theo ingredient ──────────────────────────────
       const salesMap: Record<string, { name: string; unit: string; qty: number }> = {};
