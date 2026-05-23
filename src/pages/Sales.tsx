@@ -392,17 +392,18 @@ export default function Sales() {
         stock = audit.actual_stock;
         if (txsData) {
           txsData.forEach(tx => {
-            if (tx.ingredient_id === ing.id && tx.transaction_date > audit.audit_date) {
+            const txDate = tx.transaction_date.slice(0, 10);
+            const auditDate = audit.audit_date.slice(0, 10);
+            
+            if (tx.ingredient_id === ing.id && txDate > auditDate) {
               const qty = Number(tx.quantity);
               
-              // LOGIC:
-              // - IN/IN_TRANSFER: Cộng vào kho nếu CHI NHÁNH NHẬN không phải là kho niêm phong
-              // - OUT/OUT_TRANSFER/WASTE/SALES_USAGE: Luôn trừ kho (giả định trừ từ kho đang hoạt động)
               if (['IN', 'IN_TRANSFER'].includes(tx.type)) {
                 if (!tx.branch_id || !sealedBranchIds.has(tx.branch_id)) {
                   stock += qty;
                 }
               } else {
+                // OUT, WASTE, OUT_TRANSFER, SALES_USAGE
                 stock -= Math.abs(qty);
               }
             }
