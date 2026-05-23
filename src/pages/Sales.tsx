@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import { Upload, CheckCircle2, AlertCircle, Calendar, Trash2, Edit2, Save, X, RefreshCw, TrendingDown } from 'lucide-react';
 import * as xlsx from 'xlsx';
 import { useAuth } from '../contexts/AuthContext';
-import { format, parseISO, startOfMonth } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 
 interface ParsedSale {
   product_name: string;
@@ -327,11 +327,14 @@ export default function Sales() {
     const sealedBranchIds = new Set(
       (allBranches || [])
         .filter(b => {
-          const n = b.name.toLowerCase();
+          const n = (b.name || '').toLowerCase();
+          // Bảo mật: Không bao giờ niêm phong chi nhánh mặc định hoặc có tên "shop", "quầy", "vườn hoa"
+          if (n.includes('quầy') || n.includes('shop') || n.includes('vườn hoa')) return false;
           return n.includes('niêm phong') || n.includes('sealed') || n.includes('lưu trữ') || n.includes('kho cũ');
         })
         .map(b => b.id)
     );
+    console.log('Sealed Branch IDs:', Array.from(sealedBranchIds));
 
     const ingIds = new Set(allIngs.map(i => i.id));
     const ingredientsMap: Record<string, typeof allIngs[0]> = {};
@@ -340,7 +343,6 @@ export default function Sales() {
     // 1. Tính toán Tồn kho khả dụng của từng nguyên liệu trước khi bán ngày date
     const dateObj = parseISO(date);
     const yearMonth = format(dateObj, 'yyyy-MM');
-    const monthStart = format(startOfMonth(dateObj), 'yyyy-MM-dd');
 
     // Fetch opening stock của tháng
     const { data: openingData } = await supabase
@@ -361,7 +363,8 @@ export default function Sales() {
       .select('ingredient_id, actual_stock, audit_date')
       .lt('audit_date', date)
       .order('audit_date', { ascending: false })
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .limit(10000);
 
     // Map chứa audit mới nhất trước ngày date của từng nguyên liệu
     const latestAuditMap: Record<string, { actual_stock: number, audit_date: string }> = {};
@@ -376,12 +379,14 @@ export default function Sales() {
       });
     }
 
-    // Fetch các transactions trong tháng này từ đầu tháng đến hết ngày date
+    // Fetch các transactions từ đầu năm đến hết ngày date để đảm bảo không sót
+    // (Vì audit có thể đã từ tháng trước nếu tháng này chưa kiểm)
     const { data: txsData } = await supabase
       .from('stock_transactions')
       .select('ingredient_id, type, quantity, transaction_date, branch_id')
-      .gte('transaction_date', monthStart)
-      .lte('transaction_date', date + 'T23:59:59');
+      .gte('transaction_date', '2026-01-01')
+      .lte('transaction_date', date + 'T23:59:59')
+      .limit(10000); // Tăng giới hạn txs
 
     // Tính toán Tồn kho khả dụng
     const availableStock: Record<string, number> = {};
