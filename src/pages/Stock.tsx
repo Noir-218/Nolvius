@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { Search, AlertTriangle, AlertCircle, CheckCircle2, ClipboardList, Calendar, Archive } from 'lucide-react';
-import { format, parseISO, startOfMonth } from 'date-fns';
+import { Search, AlertTriangle, AlertCircle, CheckCircle2, ClipboardList, Calendar, Archive, Info } from 'lucide-react';
+import { format, parseISO, endOfMonth } from 'date-fns';
+import { StockAIAssistant } from '../components/StockAIAssistant';
+import { IngredientLossAnalyzer } from '../components/IngredientLossAnalyzer';
 
 interface IngredientRow {
   id: string;
@@ -27,6 +29,7 @@ interface OrderType {
 }
 
 const Stock = () => {
+  const [selectedMonth, setSelectedMonth] = useState<string>(() => format(new Date(), 'yyyy-MM'));
   const [rows, setRows] = useState<IngredientRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -36,13 +39,16 @@ const Stock = () => {
   const [orderTypes, setOrderTypes] = useState<OrderType[]>([]);
   const [totalRevenue, setTotalRevenue] = useState<number>(0);
   const [totalWasteCost, setTotalWasteCost] = useState<number>(0);
+  const [recentTransactions, setRecentTransactions] = useState<any[]>([]);
+  const [selectedIngredient, setSelectedIngredient] = useState<{ id: string; name: string; unit: string } | null>(null);
 
   const fetchStock = async () => {
     setLoading(true);
 
-    const now = new Date();
-    const monthStart = format(startOfMonth(now), 'yyyy-MM-dd');
-    const yearMonth = format(now, 'yyyy-MM');
+    const parsedDate = parseISO(`${selectedMonth}-01`);
+    const monthStart = format(parsedDate, 'yyyy-MM-dd');
+    const monthEnd = format(endOfMonth(parsedDate), 'yyyy-MM-dd');
+    const yearMonth = selectedMonth;
 
     // 0. Fetch monthly opening stock for book stock calculation
     const { data: openingData } = await supabase
@@ -90,6 +96,7 @@ const Stock = () => {
       .from('stock_audits')
       .select('ingredient_id, actual_stock, theoretical_stock, audit_date')
       .gte('audit_date', monthStart)
+      .lte('audit_date', monthEnd)
       .order('audit_date', { ascending: false });
 
     // Build map: ingredient_id → { latest_actual, latest_date, cumulative_variance }
@@ -102,10 +109,11 @@ const Stock = () => {
       latest_in_counter: number | null
     }> = {};
 
-    // We also need the very latest audit (even if not this month, but for current stock view)
+    // We also need the very latest audit up to the end of the selected month
     const { data: allLatestAudits } = await supabase
       .from('stock_audits')
       .select('ingredient_id, stock_in_store, stock_in_counter, actual_stock, theoretical_stock, audit_date')
+      .lte('audit_date', monthEnd)
       .order('audit_date', { ascending: false })
       .order('created_at', { ascending: false });
 
@@ -137,13 +145,12 @@ const Stock = () => {
       });
     }
 
-    // 3. Fetch transactions since the latest audit for each ingredient
-    // To calculate "Current Theoretical Stock"
-    // For simplicity in a loop-less way, we'll fetch all tx since month start
+    // 3. Fetch transactions in the selected month
     const { data: recentTx } = await supabase
       .from('stock_transactions')
-      .select('ingredient_id, type, quantity, transaction_date, branch_id')
-      .gte('transaction_date', monthStart);
+      .select('ingredient_id, type, quantity, transaction_date, branch_id, ingredients(name)')
+      .gte('transaction_date', monthStart)
+      .lte('transaction_date', monthEnd);
 
     const txSinceMap: Record<string, number> = {};
     const totalTxMap: Record<string, number> = {};
@@ -214,12 +221,14 @@ const Stock = () => {
     ) as string[];
     setCategories(cats);
 
-    // Fetch total revenue up to current date from SALES_USAGE metadata transactions
+    // Fetch total revenue in selected month from SALES_USAGE metadata transactions
     const { data: revenueData } = await supabase
       .from('stock_transactions')
       .select('notes')
       .eq('type', 'SALES_USAGE')
-      .is('ingredient_id', null);
+      .is('ingredient_id', null)
+      .gte('transaction_date', monthStart)
+      .lte('transaction_date', monthEnd);
     
     let revSum = 0;
     if (revenueData) {
@@ -234,11 +243,13 @@ const Stock = () => {
     }
     setTotalRevenue(revSum);
 
-    // Fetch actual waste cost by joining WASTE transactions with ingredients to get unit_price
+    // Fetch actual waste cost in selected month by joining WASTE transactions with ingredients to get unit_price
     const { data: wasteTx } = await supabase
       .from('stock_transactions')
       .select('quantity, ingredients(unit_price)')
-      .eq('type', 'WASTE');
+      .eq('type', 'WASTE')
+      .gte('transaction_date', monthStart)
+      .lte('transaction_date', monthEnd);
     
     let wasteSum = 0;
     if (wasteTx) {
@@ -249,13 +260,14 @@ const Stock = () => {
       });
     }
     setTotalWasteCost(wasteSum);
+    setRecentTransactions(recentTx || []);
 
     setLoading(false);
   };
 
   useEffect(() => {
     fetchStock();
-  }, []);
+  }, [selectedMonth]);
 
   const getStatus = (current: number | null, min: number | null) => {
     if (current === null) return { label: 'Chưa kiểm kê', color: 'text-gray-500 bg-gray-100', icon: ClipboardList };
@@ -409,7 +421,18 @@ const Stock = () => {
       {/* FILTERS */}
       <div className="bg-white rounded-4 p-4 mb-6 shadow-sm border border-gray-100">
         <div className="row g-3 align-items-center">
-          <div className="col-12 col-lg-4">
+          <div className="col-12 col-sm-6 col-lg-3">
+             <div className="relative">
+                <input
+                  type="month"
+                  value={selectedMonth}
+                  onChange={(e) => setSelectedMonth(e.target.value)}
+                  className="w-full pl-11 pr-4 py-3 bg-gray-50 border-0 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-teal-500/20 focus:bg-white transition-all outline-none"
+                />
+                <Calendar className="absolute left-4 top-3.5 text-gray-400" size={18} />
+             </div>
+          </div>
+          <div className="col-12 col-sm-6 col-lg-3">
              <div className="relative">
                 <input
                   id="main-search-input"
@@ -422,7 +445,7 @@ const Stock = () => {
                 <Search className="absolute left-4 top-3.5 text-gray-400" size={18} />
              </div>
           </div>
-          <div className="col-12 col-sm-6 col-lg-4">
+          <div className="col-12 col-sm-6 col-lg-3">
             <select
               value={filterCategory}
               onChange={(e) => setFilterCategory(e.target.value)}
@@ -432,7 +455,7 @@ const Stock = () => {
               {categories.map((c, idx) => <option key={idx} value={c}>{c}</option>)}
             </select>
           </div>
-          <div className="col-12 col-sm-6 col-lg-4">
+          <div className="col-12 col-sm-6 col-lg-3">
             <select
               value={filterOrderType}
               onChange={(e) => setFilterOrderType(e.target.value)}
@@ -448,6 +471,12 @@ const Stock = () => {
       </div>
 
       {/* TABLE */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-3">
+        <h5 className="fw-black text-gray-800 text-uppercase tracking-wider mb-0">Bảng Đối Soát Tồn Kho</h5>
+        <span className="text-[10px] text-teal-600 bg-teal-50 border border-teal-100/50 px-2.5 py-1.5 rounded-xl font-black uppercase tracking-wider animate-pulse flex items-center gap-1.5 shadow-sm">
+          <Info size={12} className="shrink-0" /> Click vào dòng bất kỳ để phân tích hao hụt chi tiết
+        </span>
+      </div>
       <div className="bg-white rounded-4 shadow-sm border border-gray-100 overflow-hidden premium-shadow">
         <div className="table-responsive">
           <table className="table table-hover align-middle mb-0">
@@ -477,7 +506,12 @@ const Stock = () => {
                   const varianceColor = v < -0.001 ? 'bg-red-50 text-danger' : v > 0.001 ? 'bg-teal-50 text-teal-600' : 'bg-gray-50 text-gray-400';
 
                   return (
-                    <tr key={item.id} className="group transition-all">
+                    <tr 
+                      key={item.id} 
+                      className="group transition-all cursor-pointer hover:bg-teal-50/10 active:bg-teal-50/20"
+                      onClick={() => setSelectedIngredient({ id: item.id, name: item.name, unit: item.unit })}
+                      title={`Click để xem phân tích hao hụt chi tiết của ${item.name}`}
+                    >
                       <td className="px-6 py-4 border-gray-50">
                         <p className="fw-black text-gray-800 mb-0 tracking-tight">{item.name}</p>
                         <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{item.category_name || 'Không phân loại'}</p>
@@ -527,6 +561,20 @@ const Stock = () => {
           </table>
         </div>
       </div>
+      <StockAIAssistant
+        rows={rows}
+        recentTransactions={recentTransactions}
+        selectedMonth={selectedMonth}
+      />
+      {selectedIngredient && (
+        <IngredientLossAnalyzer
+          ingredientId={selectedIngredient.id}
+          ingredientName={selectedIngredient.name}
+          unit={selectedIngredient.unit}
+          selectedMonth={selectedMonth}
+          onClose={() => setSelectedIngredient(null)}
+        />
+      )}
     </div>
   );
 };

@@ -15,7 +15,9 @@ import {
   Calculator,
   Menu,
   X,
-  Users as UsersIcon
+  Users as UsersIcon,
+  ExternalLink,
+  Sparkles
 } from 'lucide-react';
 
 const navItems = [
@@ -31,6 +33,7 @@ const navItems = [
   { path: '/forecast', label: 'Dự Đoán Nhập Hàng', icon: Calculator, roles: ['master', 'SM', 'SS', 'MB'] },
   { path: '/expenses', label: 'Quản Lý Thu Chi', icon: Home, roles: ['master'] },
   { path: '/users', label: 'Quản Trị Người Dùng', icon: UsersIcon, roles: ['master'] },
+  { path: '/lounge', label: 'Góc Chill Staff', icon: Sparkles, roles: ['master', 'SM', 'SS', 'MB', 'staff'] },
 ];
 
 const Layout = () => {
@@ -240,6 +243,16 @@ const Layout = () => {
           </div>
 
           <div className="flex items-center gap-3">
+            <a 
+              href="https://stick-it-with-robert.vercel.app/" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="w-10 h-10 flex items-center justify-center bg-gray-50 px-2 rounded-2xl border border-gray-100 hover:border-teal-200 hover:bg-teal-50/30 cursor-pointer transition-all premium-shadow group"
+              title="Stick It with Robert"
+            >
+              <ExternalLink size={18} className="text-gray-400 group-hover:text-teal-600 transition-all duration-300" />
+            </a>
+
              <div 
               onClick={() => navigate('/profile')}
               className="flex items-center bg-gray-50 px-4 py-2 rounded-2xl border border-gray-100 hover:border-teal-200 hover:bg-teal-50/30 cursor-pointer transition-all premium-shadow"

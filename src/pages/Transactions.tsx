@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { Plus, Search, Trash2, Edit2, X, ChevronDown, ChevronRight, Eye, Copy, AlertTriangle } from 'lucide-react';
+import { Plus, Search, Trash2, Edit2, X, ChevronDown, ChevronRight, Eye, Copy, AlertTriangle, FileSpreadsheet } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { Modal } from '../components/ui/Modal';
 import { format, startOfMonth, parseISO } from 'date-fns';
 import { useAuth } from '../contexts/AuthContext';
@@ -12,6 +13,7 @@ const TYPE_LABELS: Record<string, string> = {
   'OUT': 'Điều Chuyển Đi',
   'IN_TRANSFER': 'Nhận Điều Chuyển',
   'WASTE': 'Hủy Hàng',
+  'WASTE_SYSTEM': 'Hủy Hệ Quầy',
   'SALES_USAGE': 'Tiêu Hao (Bán)',
 };
 
@@ -46,6 +48,14 @@ interface TransactionGroup {
   supplier_name: string | null;
   branch_name: string | null;
   items: Transaction[];
+}
+
+interface SelectedWasteProduct {
+  id: string;
+  productId: string;
+  name: string;
+  quantity: number;
+  ingredientUsages: Record<string, number>;
 }
 
 interface LineItem {
@@ -107,6 +117,7 @@ export default function Transactions() {
   const [txIsFast, setTxIsFast] = useState<boolean>(false);
   const [txIsApproved, setTxIsApproved] = useState<boolean>(false);
   const [txIsExported, setTxIsExported] = useState<boolean>(false);
+  const [shouldFocusLast, setShouldFocusLast] = useState(false);
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [branches, setBranches] = useState<any[]>([]);
   const [lines, setLines] = useState<LineItem[]>([emptyLine()]);
@@ -124,10 +135,15 @@ export default function Transactions() {
   // Waste by Product
   const [productList, setProductList] = useState<any[]>([]);
   const [productCategories, setProductCategories] = useState<any[]>([]);
-  const [selectedProductCategory, setSelectedProductCategory] = useState('');
   const [selectedProductId, setSelectedProductId] = useState('');
   const [productQty, setProductQty] = useState('');
   const [resolvingRecipe, setResolvingRecipe] = useState(false);
+  const [selectedWasteProducts, setSelectedWasteProducts] = useState<SelectedWasteProduct[]>([]);
+
+  // Waste by Product search states
+  const [productSearchTerm, setProductSearchTerm] = useState('');
+  const [isProductDropdownOpen, setIsProductDropdownOpen] = useState(false);
+  const [productSelectedIndex, setProductSelectedIndex] = useState(-1);
 
   const fetchData = async () => {
     setLoading(true);
@@ -180,6 +196,18 @@ export default function Transactions() {
   };
 
   useEffect(() => { fetchData(); }, [filterDateFrom, filterDateTo, filterType, filterBranch, filterStatus]);
+
+  // Focus the search input of the newly added line
+  useEffect(() => {
+    if (shouldFocusLast && lines.length > 0) {
+      const lastLineId = lines[lines.length - 1].id;
+      setTimeout(() => {
+        const el = document.getElementById(`search-input-${lastLineId}`);
+        if (el) (el as HTMLInputElement).focus();
+        setShouldFocusLast(false);
+      }, 50);
+    }
+  }, [lines.length, shouldFocusLast]);
 
   // Tự động tải doanh thu ngày cho phiếu hủy (WASTE) khi ngày thay đổi hoặc chuyển sang loại Hủy hàng
   useEffect(() => {
@@ -242,6 +270,14 @@ export default function Transactions() {
     setTxIsExported(false);
     setTxRevenue('');
     setLines([emptyLine()]);
+    
+    // Waste by Product reset
+    setSelectedProductId('');
+    setProductQty('');
+    setProductSearchTerm('');
+    setIsProductDropdownOpen(false);
+    setProductSelectedIndex(-1);
+    setSelectedWasteProducts([]);
   };
 
   const handleCreateOrUpdate = async (e: React.FormEvent) => {
@@ -253,7 +289,7 @@ export default function Transactions() {
     }
 
     setSaving(true);
-    const isNeg = ['OUT', 'WASTE', 'SALES_USAGE'].includes(txType);
+    const isNeg = ['OUT', 'WASTE', 'WASTE_SYSTEM', 'SALES_USAGE'].includes(txType);
     const referenceId = editingReferenceId || crypto.randomUUID();
 
     try {
@@ -279,7 +315,7 @@ export default function Transactions() {
           transaction_date: txDate,
           supplier_id: txType === 'IN' && txSupplier ? txSupplier : null,
           branch_id: (txType === 'IN_TRANSFER' || txType === 'OUT') && txBranch ? txBranch : null,
-          notes: txType === 'WASTE' && txRevenue ? `[DT: ${parseFloat(txRevenue).toLocaleString()}] ${txNotes}` : (txNotes || null),
+          notes: (txType === 'WASTE' && txRevenue) ? `[DT: ${parseFloat(txRevenue).toLocaleString()}] ${txNotes}` : (txNotes || null),
           is_fast_entered: txIsFast,
           is_approved: txIsApproved,
           is_transfer_exported: txIsExported,
@@ -308,19 +344,15 @@ export default function Transactions() {
 
     setResolvingRecipe(true);
     try {
-      // Fetch all recipes to resolve recursively
       const { data: allRecipes, error } = await supabase.from('recipes').select('*');
       if (error) throw error;
 
       const calcUsages: Record<string, number> = {};
-      
       const resolve = (pid: string, qty: number, visited: Set<string> = new Set()) => {
         if (visited.has(pid)) return false;
         visited.add(pid);
-
         const rows = (allRecipes || []).filter(r => (r as any).product_id === pid);
         if (rows.length === 0) return false;
-
         rows.forEach(r => {
           const row = r as any;
           if (row.ingredient_id) {
@@ -340,33 +372,73 @@ export default function Transactions() {
         return;
       }
 
-      const newLines: LineItem[] = Object.entries(calcUsages).map(([ingId, qty]) => {
-        const ing = (ingredients || []).find(i => i.id === ingId);
-        return {
-          id: crypto.randomUUID(),
-          ingredient_id: ingId,
-          quantity: qty.toString(),
-          unit_name: 'base',
-          searchTerm: ing?.name || '',
-          isDropdownOpen: false
-        };
-      });
+      const product = productList.find(p => p.id === selectedProductId);
+      const newSelectedEntry: SelectedWasteProduct = {
+        id: crypto.randomUUID(),
+        productId: selectedProductId,
+        name: product?.name || 'Sản phẩm',
+        quantity: pQty,
+        ingredientUsages: { ...calcUsages }
+      };
 
-      // Add to existing lines, filter out empty first line
+      setSelectedWasteProducts(prev => [...prev, newSelectedEntry]);
+
       setLines(prev => {
-        const filtered = prev.filter(l => l.ingredient_id && l.quantity);
-        return [...filtered, ...newLines];
+        let updatedLines = [...prev.filter(l => l.ingredient_id && l.quantity)];
+        
+        Object.entries(calcUsages).forEach(([ingId, qty]) => {
+          const existingIdx = updatedLines.findIndex(l => l.ingredient_id === ingId && l.unit_name === 'base');
+          if (existingIdx !== -1) {
+            const currentQty = parseFloat(updatedLines[existingIdx].quantity || '0');
+            updatedLines[existingIdx] = {
+              ...updatedLines[existingIdx],
+              quantity: (currentQty + qty).toString()
+            };
+          } else {
+            const ing = (ingredients || []).find(i => i.id === ingId);
+            updatedLines.push({
+              id: crypto.randomUUID(),
+              ingredient_id: ingId,
+              quantity: qty.toString(),
+              unit_name: 'base',
+              searchTerm: ing?.name || '',
+              isDropdownOpen: false
+            });
+          }
+        });
+        
+        return updatedLines;
       });
 
-      // Clear product selection
       setSelectedProductId('');
+      setProductSearchTerm('');
       setProductQty('');
-      toast.success(`Đã quy đổi ${newLines.length} nguyên liệu từ các cấp công thức.`);
+      toast.success(`Đã quy đổi và gộp nguyên liệu cho ${product?.name}.`);
     } catch (err: any) {
       toast.error('Lỗi quy đổi công thức: ' + err.message);
     } finally {
       setResolvingRecipe(false);
     }
+  };
+
+  const removeWasteProduct = (entry: SelectedWasteProduct) => {
+    setLines(prev => {
+      let updatedLines = [...prev];
+      Object.entries(entry.ingredientUsages).forEach(([ingId, qty]) => {
+        const idx = updatedLines.findIndex(l => l.ingredient_id === ingId && l.unit_name === 'base');
+        if (idx !== -1) {
+          const currentQty = parseFloat(updatedLines[idx].quantity || '0');
+          const newQty = Math.max(0, currentQty - qty);
+          if (newQty <= 0.000001) {
+             updatedLines = updatedLines.filter((_, i) => i !== idx);
+          } else {
+            updatedLines[idx] = { ...updatedLines[idx], quantity: newQty.toString() };
+          }
+        }
+      });
+      return updatedLines.length === 0 ? [emptyLine()] : updatedLines;
+    });
+    setSelectedWasteProducts(prev => prev.filter(p => p.id !== entry.id));
   };
 
   const handleDelete = async (group: TransactionGroup) => {
@@ -397,7 +469,7 @@ export default function Transactions() {
     setTxIsApproved(group.is_approved || false);
     setTxIsExported(group.is_transfer_exported || false);
     
-    if (group.type === 'WASTE' && group.notes) {
+    if ((group.type === 'WASTE' || group.type === 'WASTE_SYSTEM') && group.notes) {
       const match = group.notes.match(/^\[DT: ([\d,.]+)\]/);
       if (match) {
         setTxRevenue(match[1].replace(/,/g, ''));
@@ -452,6 +524,68 @@ export default function Transactions() {
     setExpandedGroups(prev => 
       prev.includes(id) ? prev.filter(g => g !== id) : [...prev, id]
     );
+  };
+
+  const handleExportExcel = (group: TransactionGroup) => {
+    try {
+      const toastId = toast.loading('Đang tạo file Excel...');
+      
+      const headers = [
+        "Mã hàng", "Tên mặt hàng", "Đvt", "Mã kho", "Mã lô", "Số lượng", 
+        "Giá đích danh", "Giá", "Tiền", "Mã nx", "Tk nợ", "Tk có", 
+        "Vụ việc", "Bộ phận", "Lsx", "Sản phẩm", "Hợp đồng", "Phí", "Khế ước"
+      ];
+      
+      // Tạo worksheet trống
+      const worksheet: XLSX.WorkSheet = {};
+      
+      // Ghi hàng tiêu đề vào hàng 5 (index 4)
+      headers.forEach((h, c) => {
+        worksheet[XLSX.utils.encode_cell({ r: 4, c })] = { t: 's', v: h };
+      });
+      
+      // Ghi dữ liệu từ hàng 6 trở đi — CHỈ ghi các cột có dữ liệu, 
+      // các cột trống sẽ không tạo cell → giống hệt file mẫu gốc
+      let currentRow = 5; // index 5 = hàng 6
+      for (const item of group.items) {
+        const code = item.ingredient_id || '';
+        const name = item.ingredients?.name || '';
+        const unit = item.ingredients?.unit || '';
+        const qty = Math.abs(item.quantity);
+        
+        if (code) worksheet[XLSX.utils.encode_cell({ r: currentRow, c: 0 })] = { t: 's', v: code };
+        if (name) worksheet[XLSX.utils.encode_cell({ r: currentRow, c: 1 })] = { t: 's', v: name };
+        if (unit) worksheet[XLSX.utils.encode_cell({ r: currentRow, c: 2 })] = { t: 's', v: unit };
+        worksheet[XLSX.utils.encode_cell({ r: currentRow, c: 5 })] = { t: 'n', v: qty };
+        
+        currentRow++;
+      }
+      
+      // Thiết lập phạm vi dữ liệu (ref) từ A5 đến S(lastRow)
+      const lastRow = currentRow - 1;
+      worksheet['!ref'] = XLSX.utils.encode_range({ s: { r: 4, c: 0 }, e: { r: lastRow, c: 18 } });
+      
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Sheet1");
+      
+      const wbout = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+      const blob = new Blob([wbout], { type: 'application/octet-stream' });
+      const url = URL.createObjectURL(blob);
+      
+      const a = document.createElement('a');
+      a.href = url;
+      const shortId = group.id.substring(0, 8);
+      a.download = `phieu_huy_${shortId}_${group.transaction_date}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      toast.success('Xuất file Excel thành công!', { id: toastId });
+    } catch (err: any) {
+      console.error(err);
+      toast.error('Lỗi khi xuất file Excel: ' + err.message);
+    }
   };
 
   const handleCreateOrUpdateBranch = async (e: React.FormEvent) => {
@@ -873,7 +1007,7 @@ export default function Transactions() {
                                   <button onClick={() => startEdit(group)} className="btn btn-sm btn-outline-primary border-0 rounded-circle p-2 hover-shadow" title="Sửa phiếu">
                                     <Edit2 size={16} />
                                   </button>
-                                  {(group.type === 'IN' || group.type === 'WASTE') && (
+                                  {(group.type === 'IN' || group.type === 'WASTE' || group.type === 'WASTE_SYSTEM') && (
                                     <button
                                       onClick={() => startDuplicate(group)}
                                       className="btn btn-sm border-0 rounded-circle p-2 hover-shadow"
@@ -881,6 +1015,18 @@ export default function Transactions() {
                                       title="Chép dữ liệu sang phiếu mới (số lượng = 0)"
                                     >
                                       <Copy size={16} />
+                                    </button>
+                                  )}
+                                  {(group.type === 'WASTE' || group.type === 'WASTE_SYSTEM') && (
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleExportExcel(group);
+                                      }}
+                                      className="btn btn-sm border-0 rounded-circle p-2 hover-shadow text-success"
+                                      title="Xuất file Excel"
+                                    >
+                                      <FileSpreadsheet size={16} />
                                     </button>
                                   )}
                                   <button onClick={() => handleDelete(group)} className="btn btn-sm btn-outline-danger border-0 rounded-circle p-2 hover-shadow" title="Xóa phiếu">
@@ -987,7 +1133,8 @@ export default function Transactions() {
               <option value="IN">📥 Nhập Hàng</option>
               <option value="IN_TRANSFER">🔀 Nhận Điều Chuyển</option>
               <option value="OUT">📤 Điều Chuyển Đi</option>
-              <option value="WASTE">🗑️ Hủy / Hư Hỏng</option>
+              <option value="WASTE">🗑️ Hủy / Hư Hỏng (Tính phí)</option>
+              <option value="WASTE_SYSTEM">⚙️ Hủy Hệ Quầy (Không tính phí)</option>
             </select>
           </div>
           <div className="col-12 col-md-6">
@@ -1034,9 +1181,10 @@ export default function Transactions() {
             </div>
           )}
 
-          {txType === 'WASTE' && (
+          {(txType === 'WASTE' || txType === 'WASTE_SYSTEM') && (
             <div className="col-12">
-              <div className="row g-3 mb-3">
+              {txType === 'WASTE' && (
+                <div className="row g-3 mb-3">
                 <div className="col-12 col-md-6">
                   <div className="card p-3 border-0 bg-primary bg-opacity-10 rounded-4 h-100 shadow-sm border-start border-4 border-primary">
                     <label className="form-label small fw-black text-primary text-uppercase tracking-widest mb-2">Doanh Thu Ngày/Ca</label>
@@ -1089,34 +1237,98 @@ export default function Transactions() {
                   })()}
                 </div>
               </div>
+              )}
 
               <div className="card p-3 border-0 bg-warning-subtle rounded-4 mb-2">
                 <h6 className="fw-black text-warning-emphasis text-uppercase small mb-3">Hủy Theo Sản Phẩm (Quy đổi tự động)</h6>
                 <div className="row g-2">
-                  <div className="col-12 col-md-4">
-                    <label className="form-label small text-muted mb-1">Danh mục SP</label>
-                    <select 
-                      className="form-select form-select-sm" 
-                      value={selectedProductCategory} 
-                      onChange={e => setSelectedProductCategory(e.target.value)}
-                    >
-                      <option value="">Tất cả danh mục</option>
-                      {productCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                    </select>
-                  </div>
-                  <div className="col-12 col-md-5">
+                  <div className="col-12 col-md-9 position-relative">
                     <label className="form-label small text-muted mb-1">Chọn sản phẩm cần hủy</label>
-                    <select 
-                      className="form-select form-select-sm fw-bold" 
-                      value={selectedProductId} 
-                      onChange={e => setSelectedProductId(e.target.value)}
-                    >
-                      <option value="">-- Chọn sản phẩm --</option>
-                      {productList
-                        .filter(p => !selectedProductCategory || p.category_id === selectedProductCategory)
-                        .map(p => <option key={p.id} value={p.id}>{p.name} ({p.unit || '-'})</option>)
-                      }
-                    </select>
+                    <div className="input-group input-group-sm">
+                      <span className="input-group-text bg-white border-end-0 text-muted"><Search size={14} /></span>
+                      <input
+                        type="text"
+                        className="form-control border-start-0 ps-0 fw-bold"
+                        placeholder="Gõ để tìm nhanh sản phẩm..."
+                        value={productSearchTerm}
+                        onChange={(e) => {
+                          const term = e.target.value;
+                          setProductSearchTerm(term);
+                          setIsProductDropdownOpen(true);
+                          setSelectedProductId(term === '' ? '' : selectedProductId);
+                          setProductSelectedIndex(-1);
+                        }}
+                        onFocus={() => setIsProductDropdownOpen(true)}
+                        onBlur={() => {
+                          setTimeout(() => {
+                            setIsProductDropdownOpen(false);
+                          }, 200);
+                        }}
+                        onKeyDown={(e) => {
+                          if (!isProductDropdownOpen) return;
+                          const filteredProducts = productList
+                            .filter(p => p.name.toLowerCase().includes(productSearchTerm.toLowerCase()));
+                          if (filteredProducts.length === 0) return;
+
+                          if (e.key === 'ArrowDown') {
+                            e.preventDefault();
+                            setProductSelectedIndex(prev => (prev + 1) % filteredProducts.length);
+                          } else if (e.key === 'ArrowUp') {
+                            e.preventDefault();
+                            setProductSelectedIndex(prev => (prev - 1 + filteredProducts.length) % filteredProducts.length);
+                          } else if (e.key === 'Enter' || e.key === 'Tab') {
+                            if (productSelectedIndex >= 0 && productSelectedIndex < filteredProducts.length) {
+                              e.preventDefault();
+                              const selectedProd = filteredProducts[productSelectedIndex];
+                              setSelectedProductId(selectedProd.id);
+                              setProductSearchTerm(selectedProd.name);
+                              setIsProductDropdownOpen(false);
+                              setProductSelectedIndex(-1);
+                            }
+                          }
+                        }}
+                      />
+                    </div>
+                    
+                    {/* Dropdown for Product Search */}
+                    {isProductDropdownOpen && (
+                      <div className="position-absolute w-100 mt-1 shadow-lg bg-white rounded-3 overflow-hidden border" style={{ zIndex: 1050, left: 0, right: 0 }}>
+                        <div className="list-group list-group-flush" style={{ maxHeight: '200px', overflowY: 'auto' }}>
+                          {(() => {
+                            const filteredProducts = productList
+                              .filter(p => p.name.toLowerCase().includes(productSearchTerm.toLowerCase()));
+                            
+                            if (filteredProducts.length === 0) {
+                              return <div className="p-2 text-muted small text-center">Không tìm thấy sản phẩm nào</div>;
+                            }
+                            
+                            return filteredProducts.map((p, idx) => (
+                              <button
+                                key={p.id}
+                                type="button"
+                                className={`list-group-item list-group-item-action border-0 py-2 px-3 small d-flex justify-content-between align-items-center ${productSelectedIndex === idx ? 'bg-primary text-white' : ''}`}
+                                onMouseDown={() => {
+                                  setSelectedProductId(p.id);
+                                  setProductSearchTerm(p.name);
+                                  setIsProductDropdownOpen(false);
+                                  setProductSelectedIndex(-1);
+                                }}
+                              >
+                                <div>
+                                  <span className="fw-bold">{p.name}</span>
+                                  <div className={`${productSelectedIndex === idx ? 'text-white-50' : 'text-muted'}`} style={{ fontSize: '10px' }}>
+                                    {productCategories.find(c => c.id === p.category_id)?.name || 'Không có danh mục'}
+                                  </div>
+                                </div>
+                                <span className={`badge rounded-pill ${productSelectedIndex === idx ? 'bg-white text-primary' : 'bg-light text-secondary'}`}>
+                                  {p.unit || '-'}
+                                </span>
+                              </button>
+                            ));
+                          })()}
+                        </div>
+                      </div>
+                    )}
                   </div>
                   <div className="col-8 col-md-2">
                     <label className="form-label small text-muted mb-1">Số lượng</label>
@@ -1145,6 +1357,27 @@ export default function Transactions() {
                 <div className="mt-2 small text-muted italic">
                   * Nhập sản phẩm và nhấn OK để hệ thống tự động tính toán lượng nguyên liệu cần hủy theo công thức.
                 </div>
+
+                {selectedWasteProducts.length > 0 && (
+                  <div className="mt-3 pt-3 border-top border-warning border-opacity-25">
+                    <label className="form-label small fw-black text-warning-emphasis text-uppercase tracking-widest mb-2" style={{ fontSize: '10px' }}>Sản phẩm đã chọn hủy:</label>
+                    <div className="d-flex flex-wrap gap-2">
+                      {selectedWasteProducts.map(p => (
+                        <div key={p.id} className="badge bg-white text-dark border border-warning-subtle d-flex align-items-center gap-2 px-3 py-2 rounded-3 shadow-sm shadow-hover-sm transition-all">
+                          <span className="fw-black text-warning-emphasis">{p.quantity}</span>
+                          <span className="fw-bold">{p.name}</span>
+                          <button 
+                            type="button" 
+                            onClick={() => removeWasteProduct(p)}
+                            className="btn-close" 
+                            style={{ fontSize: '10px', padding: '0.25rem' }}
+                            title="Xóa sản phẩm này"
+                          ></button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -1247,6 +1480,7 @@ export default function Transactions() {
                           <div className="input-group input-group-sm">
                             <span className="input-group-text bg-white border-end-0 text-muted"><Search size={14} /></span>
                             <input
+                              id={`search-input-${line.id}`}
                               type="text"
                               className="form-control border-start-0 ps-0 fw-bold"
                               placeholder="Gõ để tìm nhanh (vd: sữa, cafe...)"
@@ -1380,7 +1614,16 @@ export default function Transactions() {
                 );
               })}
             </div>
-            <button type="button" onClick={() => setLines(prev => [...prev, emptyLine()])} className="btn btn-link link-primary p-0 fw-bold small mt-2">+ Thêm dòng nguyên liệu</button>
+            <button 
+              type="button" 
+              onClick={() => {
+                setLines(prev => [...prev, emptyLine()]);
+                setShouldFocusLast(true);
+              }} 
+              className="btn btn-link link-primary p-0 fw-bold small mt-2"
+            >
+              + Thêm dòng nguyên liệu
+            </button>
           </div>
 
           <div className="col-12 mt-4">
