@@ -97,7 +97,7 @@ export const IngredientLossAnalyzer: React.FC<IngredientLossAnalyzerProps> = ({
   }, 0);
 
   const totalWaste = transactions
-    .filter(t => t.type === 'WASTE')
+    .filter(t => t.type === 'WASTE' || t.type === 'WASTE_SYSTEM')
     .reduce((sum, t) => sum + Math.abs(t.quantity), 0);
 
   const getTxBadge = (type: string) => {
@@ -112,6 +112,8 @@ export const IngredientLossAnalyzer: React.FC<IngredientLossAnalyzerProps> = ({
         return { label: 'Chuyển kho đi', color: 'bg-orange-50 text-orange-700 border-orange-100' };
       case 'WASTE':
         return { label: 'Hủy hàng', color: 'bg-red-50 text-red-700 border-red-100 font-extrabold' };
+      case 'WASTE_SYSTEM':
+        return { label: 'Hủy hệ quầy', color: 'bg-red-50 text-red-700 border-red-100 font-extrabold' };
       case 'SALES_USAGE':
         return { label: 'Bao tiêu bán hàng', color: 'bg-sky-50 text-sky-700 border-sky-100' };
       default:
@@ -294,7 +296,7 @@ export const IngredientLossAnalyzer: React.FC<IngredientLossAnalyzerProps> = ({
                     ) : (
                       transactions.map((t) => {
                         const badge = getTxBadge(t.type);
-                        const isMinus = ['OUT', 'OUT_TRANSFER', 'WASTE', 'SALES_USAGE'].includes(t.type);
+                        const isMinus = ['OUT', 'OUT_TRANSFER', 'WASTE', 'WASTE_SYSTEM', 'SALES_USAGE'].includes(t.type);
                         const qtyText = `${isMinus ? '-' : '+'}${Math.abs(t.quantity).toLocaleString()}`;
 
                         return (

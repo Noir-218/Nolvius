@@ -70,7 +70,7 @@ export default function Analysis() {
       const { data: txData } = await supabase
         .from('stock_transactions')
         .select('ingredient_id, quantity, ingredients(name, unit)')
-        .in('type', ['SALES_USAGE', 'WASTE'])
+        .in('type', ['SALES_USAGE', 'WASTE', 'WASTE_SYSTEM'])
         .gte('transaction_date', fromStr)
         .lte('transaction_date', todayStr)
         .order('transaction_date', { ascending: true })

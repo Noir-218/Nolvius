@@ -400,7 +400,7 @@ export const TeaAndCakeAuditTab: React.FC<Props> = ({ selectedDate }) => {
             if (!txSummary[tx.ingredient_id]) txSummary[tx.ingredient_id] = { in: 0, out: 0 };
             const qty = Math.abs(Number(tx.quantity)) || 0;
             if (['IN', 'IN_TRANSFER'].includes(tx.type)) txSummary[tx.ingredient_id].in += qty;
-            else if (['OUT', 'WASTE', 'SALES_USAGE'].includes(tx.type)) txSummary[tx.ingredient_id].out += qty;
+            else if (['OUT', 'WASTE', 'WASTE_SYSTEM', 'SALES_USAGE'].includes(tx.type)) txSummary[tx.ingredient_id].out += qty;
           }
         });
       }

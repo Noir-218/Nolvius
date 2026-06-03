@@ -170,7 +170,7 @@ export default function Forecast() {
       const { data: txData } = await supabase
         .from('stock_transactions')
         .select('ingredient_id, quantity, type, transaction_date')
-        .in('type', ['SALES_USAGE', 'WASTE'])
+        .in('type', ['SALES_USAGE', 'WASTE', 'WASTE_SYSTEM'])
         .gte('transaction_date', fromStr)
         .lte('transaction_date', todayStr);
 

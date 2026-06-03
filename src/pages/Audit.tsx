@@ -251,14 +251,14 @@ export default function Audit() {
         if (isCurrentDay) {
           if (!daySummary[tx.ingredient_id]) daySummary[tx.ingredient_id] = { in: 0, out: 0 };
           if (['IN', 'IN_TRANSFER'].includes(tx.type)) daySummary[tx.ingredient_id].in += qty;
-          else if (['OUT', 'WASTE', 'SALES_USAGE'].includes(tx.type)) daySummary[tx.ingredient_id].out += qty;
+          else if (['OUT', 'WASTE', 'WASTE_SYSTEM', 'SALES_USAGE'].includes(tx.type)) daySummary[tx.ingredient_id].out += qty;
         } else {
           // Transaction is before current day but after/on start of month
           const lastDate = priorDateMap[tx.ingredient_id] || (startOfThisMonth.slice(0, 8) + '00');
           if (tx.transaction_date > lastDate) { // LT selectedDate is already handled by query
             if (!gapSummary[tx.ingredient_id]) gapSummary[tx.ingredient_id] = { in: 0, out: 0 };
             if (['IN', 'IN_TRANSFER'].includes(tx.type)) gapSummary[tx.ingredient_id].in += qty;
-            else if (['OUT', 'WASTE', 'SALES_USAGE'].includes(tx.type)) gapSummary[tx.ingredient_id].out += qty;
+            else if (['OUT', 'WASTE', 'WASTE_SYSTEM', 'SALES_USAGE'].includes(tx.type)) gapSummary[tx.ingredient_id].out += qty;
           }
         }
       });
