@@ -158,7 +158,7 @@ Yêu cầu đối với AI:
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 contents: [{ parts: [{ text: promptContext }] }],
-                generationConfig: { temperature: 0.2, maxOutputTokens: 2048 },
+                generationConfig: { temperature: 0.2, maxOutputTokens: 8192 },
               }),
             }
           );
@@ -170,12 +170,20 @@ Yêu cầu đối với AI:
           }
 
           const resData = await response.json();
-          const answer = resData.candidates?.[0]?.content?.parts?.[0]?.text;
+          const candidate = resData.candidates?.[0];
+          const finishReason = candidate?.finishReason;
+          const answer = candidate?.content?.parts
+            ?.map((part: { text?: string }) => part.text || '')
+            .join('');
           if (!answer) { lastError = 'Không có phản hồi từ mô hình AI.'; continue; }
+
+          const finalAnswer = finishReason === 'MAX_TOKENS'
+            ? `${answer}\n\n*Phản hồi bị cắt do vượt giới hạn độ dài. Hãy hỏi tiếp: "tiếp tục phần còn lại".*`
+            : answer;
 
           setMessages(prev => [
             ...prev,
-            { role: 'model', content: answer, timestamp: new Date() },
+            { role: 'model', content: finalAnswer, timestamp: new Date() },
           ]);
           answered = true;
           break;

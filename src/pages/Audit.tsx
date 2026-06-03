@@ -494,6 +494,44 @@ export default function Audit() {
     XLSX.writeFile(wb, `Kiem_Ke_${selectedDate}.xlsx`);
   };
 
+  const syncToGoogleSheet = async (records: any[]) => {
+    const GOOGLE_SCRIPT_URL = import.meta.env.VITE_GOOGLE_SCRIPT_URL;
+    if (!GOOGLE_SCRIPT_URL) {
+      toast.error('Chưa cấu hình URL Google Script (VITE_GOOGLE_SCRIPT_URL) trong file .env! Đã lưu cục bộ nhưng bỏ qua đồng bộ Sheets.');
+      return;
+    }
+
+    const formattedDate = format(parseISO(selectedDate), 'dd/MM/yyyy');
+
+    const inventoryList = records.map(record => ({
+      code: record.ingredient_id,
+      name: ingredients.find(i => i.id === record.ingredient_id)?.name || '',
+      thucTe: record.actual_stock
+    }));
+
+    const toastId = toast.loading('Đang đồng bộ sang Google Sheets...');
+
+    try {
+      const response = await fetch(GOOGLE_SCRIPT_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "text/plain",
+        },
+        body: JSON.stringify({ selectedDate: formattedDate, inventoryList }),
+      });
+
+      const result = await response.json();
+      if (result.status === "success") {
+        toast.success(`Đồng bộ Sheets thành công! Đã cập nhật ${result.updatedItems || result.updatedRows || 0} mục.`, { id: toastId });
+      } else {
+        toast.error("Lỗi đồng bộ Sheets: " + (result.message || 'Không rõ nguyên nhân'), { id: toastId });
+      }
+    } catch (error) {
+      console.error("Lỗi kết nối API Google Sheets:", error);
+      toast.error("Không thể kết nối với Google Sheets.", { id: toastId });
+    }
+  };
+
   const handleSaveAudit = useCallback(async () => {
     const filledKeys = Object.keys(storeStocks).concat(Object.keys(counterStocks))
       .filter((v, i, a) => a.indexOf(v) === i)
@@ -506,10 +544,10 @@ export default function Audit() {
     try {
       // 1. Tải dữ liệu mới nhất từ DB cho các mặt hàng sắp lưu để gộp (Merge)
       const { data: latestDbData } = await supabase
-        .from('stock_audits')
-        .select('ingredient_id, stock_in_store, stock_in_counter, store_calc_breakdown, counter_calc_breakdown')
-        .eq('audit_date', selectedDate)
-        .in('ingredient_id', filledKeys);
+          .from('stock_audits')
+          .select('ingredient_id, stock_in_store, stock_in_counter, store_calc_breakdown, counter_calc_breakdown')
+          .eq('audit_date', selectedDate)
+          .in('ingredient_id', filledKeys);
 
       const latestDbMap: Record<string, any> = {};
       if (latestDbData) {
@@ -584,14 +622,20 @@ export default function Audit() {
         if (error) throw error;
       }
       
-      toast.success('Đã lưu!');
+      toast.success('Đã lưu cục bộ thành công!');
       fetchDailyData();
+
+      // Đồng bộ sang Google Sheets sau khi lưu thành công lên Supabase
+      if (recordsToUpsert.length > 0) {
+        await syncToGoogleSheet(recordsToUpsert);
+      }
     } catch (err: any) { 
       console.error(err);
       toast.error('Lỗi khi lưu: ' + (err?.message || err?.details || JSON.stringify(err))); 
     }
     setSaving(false);
   }, [storeStocks, counterStocks, storeUnits, counterUnits, allUnits, openingStockMap, dailyTx, selectedDate, user, ingredients, calcBreakdowns, fetchDailyData]);
+
 
   const handleSaveMonthlyOpening = useCallback(async () => {
     const filledKeys = Object.keys(monthlyOpeningInputs).filter(k => monthlyOpeningInputs[k] !== '');

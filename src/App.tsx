@@ -14,7 +14,7 @@ import Forecast from './pages/Forecast';
 import Expenses from './pages/Expenses';
 import Users from './pages/Users';
 import Profile from './pages/Profile';
-import Lounge from './pages/Lounge';
+
 import { Toaster } from 'react-hot-toast';
 
 function App() {
@@ -39,7 +39,7 @@ function App() {
             <Route path="expenses" element={<Expenses />} />
             <Route path="users" element={<Users />} />
             <Route path="profile" element={<Profile />} />
-            <Route path="lounge" element={<Lounge />} />
+
           </Route>
           
           <Route path="*" element={<Navigate to="/" replace />} />

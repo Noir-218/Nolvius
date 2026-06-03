@@ -16,9 +16,9 @@ import {
   Menu,
   X,
   Users as UsersIcon,
-  ExternalLink,
   Sparkles
 } from 'lucide-react';
+import { LoungeBubble } from './LoungeBubble';
 
 const navItems = [
   { path: '/', label: 'SOS', icon: ShoppingCart, roles: ['master', 'SM', 'SS', 'MB'] },
@@ -33,7 +33,7 @@ const navItems = [
   { path: '/forecast', label: 'Dự Đoán Nhập Hàng', icon: Calculator, roles: ['master', 'SM', 'SS', 'MB'] },
   { path: '/expenses', label: 'Quản Lý Thu Chi', icon: Home, roles: ['master'] },
   { path: '/users', label: 'Quản Trị Người Dùng', icon: UsersIcon, roles: ['master'] },
-  { path: '/lounge', label: 'Góc Chill Staff', icon: Sparkles, roles: ['master', 'SM', 'SS', 'MB', 'staff'] },
+
 ];
 
 const Layout = () => {
@@ -41,6 +41,7 @@ const Layout = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isLoungeOpen, setIsLoungeOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
     const saved = localStorage.getItem('sidebar-collapsed');
     return saved ? JSON.parse(saved) : false;
@@ -243,15 +244,22 @@ const Layout = () => {
           </div>
 
           <div className="flex items-center gap-3">
-            <a 
-              href="https://stick-it-with-robert.vercel.app/" 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="w-10 h-10 flex items-center justify-center bg-gray-50 px-2 rounded-2xl border border-gray-100 hover:border-teal-200 hover:bg-teal-50/30 cursor-pointer transition-all premium-shadow group"
-              title="Stick It with Robert"
+            <button
+              onClick={() => setIsLoungeOpen(!isLoungeOpen)}
+              className={`w-10 h-10 flex items-center justify-center rounded-2xl border cursor-pointer transition-all premium-shadow group ${
+                isLoungeOpen
+                  ? 'bg-amber-500 border-amber-400 shadow-amber-200 shadow-lg'
+                  : 'bg-gray-50 border-gray-100 hover:border-amber-300 hover:bg-amber-50/40'
+              }`}
+              title="Góc Chill Staff"
             >
-              <ExternalLink size={18} className="text-gray-400 group-hover:text-teal-600 transition-all duration-300" />
-            </a>
+              <Sparkles
+                size={18}
+                className={`transition-all duration-300 ${
+                  isLoungeOpen ? 'text-white rotate-12' : 'text-gray-400 group-hover:text-amber-500'
+                }`}
+              />
+            </button>
 
              <div 
               onClick={() => navigate('/profile')}
@@ -287,6 +295,9 @@ const Layout = () => {
           </div>
         </div>
       </main>
+
+      {/* Lounge Bubble */}
+      <LoungeBubble isOpen={isLoungeOpen} onClose={() => setIsLoungeOpen(false)} />
     </div>
   );
 };
