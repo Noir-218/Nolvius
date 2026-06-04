@@ -172,7 +172,7 @@ export default function Transactions() {
     // Fetch dependencies
     const { data: ingData } = await supabase
       .from('ingredients')
-      .select('id, name, unit, unit_price, category_id, ingredient_categories(id, name)')
+      .select('id, name, unit, unit_price, category_id, substitute_id, ingredient_categories(id, name)')
       .order('name');
     if (ingData) setIngredients(ingData as any[]);
 
@@ -196,6 +196,38 @@ export default function Transactions() {
   };
 
   useEffect(() => { fetchData(); }, [filterDateFrom, filterDateTo, filterType, filterBranch, filterStatus]);
+
+  // Tự động tính toán lại số liệu tổng hợp nguyên liệu khi transactions thay đổi do bộ lọc
+  useEffect(() => {
+    if (!selectedIngSummary) return;
+
+    const ingTransactions = transactions.filter(t => t.ingredient_id === selectedIngSummary.id);
+    const stats: Record<string, number> = {
+      'IN': 0,
+      'IN_TRANSFER': 0,
+      'OUT': 0,
+      'WASTE': 0,
+      'SALES_USAGE': 0
+    };
+
+    ingTransactions.forEach(t => {
+      if (stats[t.type] !== undefined) {
+        stats[t.type] += Math.abs(t.quantity);
+      }
+    });
+
+    setSelectedIngSummary(prev => {
+      if (!prev) return null;
+      const hasChanged = Object.keys(stats).some(
+        key => stats[key] !== prev.stats[key]
+      );
+      if (hasChanged) {
+        return { ...prev, stats };
+      }
+      return prev;
+    });
+  }, [transactions]);
+
 
   // Focus the search input of the newly added line
   useEffect(() => {
@@ -372,13 +404,153 @@ export default function Transactions() {
         return;
       }
 
+      // Calculate available stock for ingredients up to txDate (similar to Sales.tsx)
+      const dateObj = parseISO(txDate);
+      const yearMonth = format(dateObj, 'yyyy-MM');
+
+      // Fetch opening stock
+      const { data: openingData } = await supabase
+        .from('monthly_opening_stock')
+        .select('ingredient_id, opening_stock')
+        .eq('year_month', yearMonth);
+      
+      const openingMap: Record<string, number> = {};
+      if (openingData) {
+        openingData.forEach(m => {
+          openingMap[m.ingredient_id] = m.opening_stock ?? 0;
+        });
+      }
+
+      // Fetch audits
+      const { data: auditsData } = await supabase
+        .from('stock_audits')
+        .select('ingredient_id, actual_stock, audit_date')
+        .lt('audit_date', txDate)
+        .order('audit_date', { ascending: false })
+        .order('created_at', { ascending: false })
+        .limit(10000);
+
+      const latestAuditMap: Record<string, { actual_stock: number, audit_date: string }> = {};
+      if (auditsData) {
+        auditsData.forEach(a => {
+          if (a.ingredient_id && latestAuditMap[a.ingredient_id] === undefined) {
+            latestAuditMap[a.ingredient_id] = {
+              actual_stock: a.actual_stock ?? 0,
+              audit_date: a.audit_date
+            };
+          }
+        });
+      }
+
+      const auditDates = Object.values(latestAuditMap).map(a => a.audit_date.slice(0, 10));
+      const earliestAuditDate = auditDates.length > 0
+        ? auditDates.reduce((min, d) => d < min ? d : min, auditDates[0])
+        : format(dateObj, 'yyyy-MM-01');
+
+      const txFetchTo = txDate + 'T23:59:59+07:00';
+      const { data: txsData } = await supabase
+        .from('stock_transactions')
+        .select('ingredient_id, type, quantity, transaction_date, branch_id')
+        .gte('transaction_date', earliestAuditDate)
+        .lte('transaction_date', txFetchTo)
+        .order('transaction_date', { ascending: true })
+        .limit(10000);
+
+      // Fetch sealed branch ids
+      const { data: allBranches } = await supabase.from('branches').select('id, name');
+      const sealedBranchIds = new Set(
+        (allBranches || [])
+          .filter(b => {
+            const n = (b.name || '').toLowerCase();
+            if (n.includes('quầy') || n.includes('shop') || n.includes('vườn hoa')) return false;
+            return n.includes('niêm phong') || n.includes('sealed') || n.includes('lưu trữ') || n.includes('kho cũ');
+          })
+          .map(b => b.id)
+      );
+
+      const availableStock: Record<string, number> = {};
+      ingredients.forEach(ing => {
+        const audit = latestAuditMap[ing.id];
+        let stock = 0;
+        if (audit) {
+          stock = audit.actual_stock;
+          const auditDate = audit.audit_date.slice(0, 10);
+          const ingTxs = txsData?.filter(tx => tx.ingredient_id === ing.id) || [];
+          ingTxs.forEach(tx => {
+            const txDateStr = tx.transaction_date.slice(0, 10);
+            if (txDateStr > auditDate) {
+              const qty = Number(tx.quantity);
+              if (['IN', 'IN_TRANSFER'].includes(tx.type)) {
+                if (!tx.branch_id || !sealedBranchIds.has(tx.branch_id)) {
+                  stock += qty;
+                }
+              } else {
+                stock -= Math.abs(qty);
+              }
+            }
+          });
+        } else {
+          stock = openingMap[ing.id] ?? 0;
+          if (txsData) {
+            txsData.forEach(tx => {
+              if (tx.ingredient_id === ing.id) {
+                const qty = Number(tx.quantity);
+                if (['IN', 'IN_TRANSFER'].includes(tx.type)) {
+                  if (!tx.branch_id || !sealedBranchIds.has(tx.branch_id)) {
+                    stock += qty;
+                  }
+                } else {
+                  stock -= Math.abs(qty);
+                }
+              }
+            });
+          }
+        }
+        availableStock[ing.id] = stock;
+      });
+
+      // Apply FIFO / substitute resolution logic
+      const finalUsage: Record<string, number> = {};
+
+      Object.entries(calcUsages).forEach(([ingId, qty]) => {
+        let currentId = ingId;
+        let needed = qty;
+        const visitedChain = new Set<string>();
+
+        while (needed > 0) {
+          visitedChain.add(currentId);
+          const ingredient = ingredients.find(i => i.id === currentId);
+          const stock = availableStock[currentId] ?? 0;
+          const successorId = ingredient?.substitute_id;
+
+          if (successorId && !visitedChain.has(successorId)) {
+            const availableToTake = Math.max(0, stock);
+            const taken = Math.min(needed, availableToTake);
+
+            if (taken > 0) {
+              finalUsage[currentId] = (finalUsage[currentId] || 0) + taken;
+              needed -= taken;
+              availableStock[currentId] -= taken;
+            }
+
+            if (needed > 0) {
+              currentId = successorId;
+            }
+          } else {
+            finalUsage[currentId] = (finalUsage[currentId] || 0) + needed;
+            availableStock[currentId] -= needed;
+            needed = 0;
+          }
+        }
+      });
+
       const product = productList.find(p => p.id === selectedProductId);
       const newSelectedEntry: SelectedWasteProduct = {
         id: crypto.randomUUID(),
         productId: selectedProductId,
         name: product?.name || 'Sản phẩm',
         quantity: pQty,
-        ingredientUsages: { ...calcUsages }
+        ingredientUsages: { ...finalUsage }
       };
 
       setSelectedWasteProducts(prev => [...prev, newSelectedEntry]);
@@ -386,7 +558,7 @@ export default function Transactions() {
       setLines(prev => {
         let updatedLines = [...prev.filter(l => l.ingredient_id && l.quantity)];
         
-        Object.entries(calcUsages).forEach(([ingId, qty]) => {
+        Object.entries(finalUsage).forEach(([ingId, qty]) => {
           const existingIdx = updatedLines.findIndex(l => l.ingredient_id === ingId && l.unit_name === 'base');
           if (existingIdx !== -1) {
             const currentQty = parseFloat(updatedLines[existingIdx].quantity || '0');
