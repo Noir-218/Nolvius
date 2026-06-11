@@ -10,6 +10,20 @@ type Product = Database['public']['Tables']['products']['Row'] & {
   unit: string | null;
 };
 
+const unsignedString = (str: string) => {
+  return str
+    .normalize('NFC')
+    .toLowerCase()
+    .replace(/[àáạảãâầấậẩẫăằắặẳẵ]/g, 'a')
+    .replace(/[èéẹẻẽêềếệểễ]/g, 'e')
+    .replace(/[ìíịỉĩ]/g, 'i')
+    .replace(/[òóọỏõôồốộổỗơờớợởỡ]/g, 'o')
+    .replace(/[ùúụủũưừứựửữ]/g, 'u')
+    .replace(/[ỳýỵỷỹ]/g, 'y')
+    .replace(/đ/g, 'd')
+    .replace(/[\u0300\u0301\u0309\u0303\u0327\u0309\u0323]/g, '');
+};
+
 export const ProductsTab = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<{id: string, name: string}[]>([]);
@@ -38,11 +52,19 @@ export const ProductsTab = () => {
       .select(`*, product_categories(name)`)
       .order('created_at', { ascending: false });
     
-    if (search) query = query.ilike('name', `%${search}%`);
     if (filterCategory) query = query.eq('category_id', filterCategory);
     
     const { data } = await query;
-    if (data) setProducts(data as any);
+    if (data) {
+      if (search) {
+        const filtered = (data as any[]).filter(p => 
+          unsignedString(p.name).includes(unsignedString(search))
+        );
+        setProducts(filtered);
+      } else {
+        setProducts(data as any);
+      }
+    }
     
     setLoading(false);
   };

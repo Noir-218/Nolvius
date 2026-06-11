@@ -3,6 +3,20 @@ import { supabase } from '../../lib/supabase';
 import { Edit2, X, Search } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 
+const unsignedString = (str: string) => {
+  return str
+    .normalize('NFC')
+    .toLowerCase()
+    .replace(/[àáạảãâầấậẩẫăằắặẳẵ]/g, 'a')
+    .replace(/[èéẹẻẽêềếệểễ]/g, 'e')
+    .replace(/[ìíịỉĩ]/g, 'i')
+    .replace(/[òóọỏõôồốộổỗơờớợởỡ]/g, 'o')
+    .replace(/[ùúụủũưừứựửữ]/g, 'u')
+    .replace(/[ỳýỵỷỹ]/g, 'y')
+    .replace(/đ/g, 'd')
+    .replace(/[\u0300\u0301\u0309\u0303\u0327\u0309\u0323]/g, '');
+};
+
 export const RecipesTab = () => {
   const [products, setProducts] = useState<any[]>([]);
   const [ingredients, setIngredients] = useState<any[]>([]);
@@ -82,7 +96,7 @@ export const RecipesTab = () => {
   };
 
   const filteredProducts = products.filter(p => {
-    const matchesSearch = !search || p.name.toLowerCase().includes(search.toLowerCase());
+    const matchesSearch = !search || unsignedString(p.name).includes(unsignedString(search));
     const matchesCategory = !filterCategory || p.category_id === filterCategory;
     return matchesSearch && matchesCategory;
   });

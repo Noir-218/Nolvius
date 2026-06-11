@@ -26,6 +26,20 @@ interface DailyTxSummary {
 const toYearMonth = (dateStr: string) => dateStr.slice(0, 7);
 const parseDate = (d: string) => parseISO(d);
 
+const unsignedString = (str: string) => {
+  return str
+    .normalize('NFC')
+    .toLowerCase()
+    .replace(/[àáạảãâầấậẩẫăằắặẳẵ]/g, 'a')
+    .replace(/[èéẹẻẽêềếệểễ]/g, 'e')
+    .replace(/[ìíịỉĩ]/g, 'i')
+    .replace(/[òóọỏõôồốộổỗơờớợởỡ]/g, 'o')
+    .replace(/[ùúụủũưừứựửữ]/g, 'u')
+    .replace(/[ỳýỵỷỹ]/g, 'y')
+    .replace(/đ/g, 'd')
+    .replace(/[\u0300\u0301\u0309\u0303\u0327\u0309\u0323]/g, '');
+};
+
 export default function Audit() {
   const { user, role } = useAuth();
   const isStaff = role === 'staff';
@@ -749,7 +763,7 @@ export default function Audit() {
   };
 
   const filtered = ingredients.filter(ing => {
-    const matchSearch = ing.name.toLowerCase().includes(search.toLowerCase());
+    const matchSearch = unsignedString(ing.name).includes(unsignedString(search));
     const matchCat = selectedCategory ? ing.ingredient_categories?.name === selectedCategory : true;
     
     if (filterType === 'all') return matchSearch && matchCat;

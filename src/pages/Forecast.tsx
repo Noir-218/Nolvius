@@ -9,6 +9,17 @@ import {
 import { format, subDays, addDays, parseISO, differenceInCalendarDays, startOfToday, isWithinInterval } from 'date-fns';
 import { useMemo } from 'react';
 
+const unsignedString = (str: string) =>
+  str.normalize('NFC').toLowerCase()
+    .replace(/[àáạảãâầấậẩẫăằắặẳẵ]/g, 'a')
+    .replace(/[èéẹẻẽêềếệểễ]/g, 'e')
+    .replace(/[ìíịỉĩ]/g, 'i')
+    .replace(/[òóọỏõôồốộổỗơờớợởỡ]/g, 'o')
+    .replace(/[ùúụủũưừứựửữ]/g, 'u')
+    .replace(/[ỳýỵỷỹ]/g, 'y')
+    .replace(/đ/g, 'd')
+    .replace(/[\u0300\u0301\u0309\u0303\u0327\u0309\u0323]/g, '');
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type ConsumptionSource = 'sales' | 'audit_diff' | 'none';
@@ -297,7 +308,7 @@ export default function Forecast() {
   }, [data, incomingQtyMap]);
 
   const filteredData = calculatedData.filter(r => {
-    const matchSearch = r.name.toLowerCase().includes(search.toLowerCase());
+    const matchSearch = unsignedString(r.name).includes(unsignedString(search));
     const matchOrderType = !selectedOrderTypeId || r.order_type_id === selectedOrderTypeId;
     return matchSearch && matchOrderType;
   });

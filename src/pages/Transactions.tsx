@@ -17,6 +17,20 @@ const TYPE_LABELS: Record<string, string> = {
   'SALES_USAGE': 'Tiêu Hao (Bán)',
 };
 
+const unsignedString = (str: string) => {
+  return str
+    .normalize('NFC')
+    .toLowerCase()
+    .replace(/[àáạảãâầấậẩẫăằắặẳẵ]/g, 'a')
+    .replace(/[èéẹẻẽêềếệểễ]/g, 'e')
+    .replace(/[ìíịỉĩ]/g, 'i')
+    .replace(/[òóọỏõôồốộổỗơờớợởỡ]/g, 'o')
+    .replace(/[ùúụủũưừứựửữ]/g, 'u')
+    .replace(/[ỳýỵỷỹ]/g, 'y')
+    .replace(/đ/g, 'd')
+    .replace(/[\u0300\u0301\u0309\u0303\u0327\u0309\u0323]/g, '');
+};
+
 
 interface Transaction {
   id: string;
@@ -842,9 +856,9 @@ export default function Transactions() {
 
   const filtered = search
     ? groupedTransactions.filter(g =>
-      g.items.some(t => t.ingredients?.name?.toLowerCase().includes(search.toLowerCase())) ||
-      g.supplier_name?.toLowerCase().includes(search.toLowerCase()) ||
-      g.notes?.toLowerCase()?.includes(search.toLowerCase())
+      g.items.some(t => unsignedString(t.ingredients?.name ?? '').includes(unsignedString(search))) ||
+      unsignedString(g.supplier_name ?? '').includes(unsignedString(search)) ||
+      unsignedString(g.notes ?? '').includes(unsignedString(search))
     )
     : groupedTransactions;
 
@@ -979,7 +993,7 @@ export default function Transactions() {
                       }} 
                       onFocus={() => setIsCombinedDropdownOpen(true)}
                       onKeyDown={(e) => {
-                        const filteredIngs = ingredients.filter(i => i.name.toLowerCase().includes(combinedSearchTerm.toLowerCase()));
+                        const filteredIngs = ingredients.filter(i => unsignedString(i.name).includes(unsignedString(combinedSearchTerm)));
                         if (e.key === 'ArrowDown') {
                           e.preventDefault();
                           setCombinedSelectedIndex(prev => (prev + 1) % filteredIngs.length);
@@ -1015,7 +1029,7 @@ export default function Transactions() {
                     <div className="position-absolute w-100 mt-1 shadow-lg bg-white rounded-3 overflow-hidden border" style={{ zIndex: 1050 }}>
                       <div className="list-group list-group-flush" style={{ maxHeight: '200px', overflowY: 'auto' }}>
                         {ingredients
-                          .filter(i => i.name.toLowerCase().includes(combinedSearchTerm.toLowerCase()))
+                          .filter(i => unsignedString(i.name).includes(unsignedString(combinedSearchTerm)))
                           .map((i, idx) => (
                             <button
                               key={i.id}
@@ -1439,7 +1453,7 @@ export default function Transactions() {
                         onKeyDown={(e) => {
                           if (!isProductDropdownOpen) return;
                           const filteredProducts = productList
-                            .filter(p => p.name.toLowerCase().includes(productSearchTerm.toLowerCase()));
+                            .filter(p => unsignedString(p.name).includes(unsignedString(productSearchTerm)));
                           if (filteredProducts.length === 0) return;
 
                           if (e.key === 'ArrowDown') {
@@ -1468,7 +1482,7 @@ export default function Transactions() {
                         <div className="list-group list-group-flush" style={{ maxHeight: '200px', overflowY: 'auto' }}>
                           {(() => {
                             const filteredProducts = productList
-                              .filter(p => p.name.toLowerCase().includes(productSearchTerm.toLowerCase()));
+                              .filter(p => unsignedString(p.name).includes(unsignedString(productSearchTerm)));
                             
                             if (filteredProducts.length === 0) {
                               return <div className="p-2 text-muted small text-center">Không tìm thấy sản phẩm nào</div>;
@@ -1677,7 +1691,7 @@ export default function Transactions() {
                               }}
                               onKeyDown={(e) => {
                                 if (!line.isDropdownOpen) return;
-                                const filtered = ingredients.filter(i => i.name.toLowerCase().includes((line.searchTerm || '').toLowerCase()));
+                                const filtered = ingredients.filter(i => unsignedString(i.name).includes(unsignedString(line.searchTerm || '')));
                                 if (filtered.length === 0) return;
 
                                 if (e.key === 'ArrowDown') {
@@ -1709,7 +1723,7 @@ export default function Transactions() {
                             <div className="position-absolute w-100 mt-1 shadow-lg bg-white rounded-3 overflow-hidden border" style={{ zIndex: 1050, left: 0, right: 0 }}>
                               <div className="list-group list-group-flush" style={{ maxHeight: '200px', overflowY: 'auto' }}>
                                 {ingredients
-                                  .filter(i => i.name.toLowerCase().includes((line.searchTerm || '').toLowerCase()))
+                                  .filter(i => unsignedString(i.name).includes(unsignedString(line.searchTerm || '')))
                                   .map((i, idx) => (
                                     <button
                                       key={i.id}
@@ -1728,7 +1742,7 @@ export default function Transactions() {
                                       <span className={`badge rounded-pill ${line.selectedIndex === idx ? 'bg-white text-primary' : 'bg-light text-secondary'}`}>{i.unit}</span>
                                     </button>
                                   ))}
-                                {ingredients.filter(i => i.name.toLowerCase().includes((line.searchTerm || '').toLowerCase())).length === 0 && (
+                                {ingredients.filter(i => unsignedString(i.name).includes(unsignedString(line.searchTerm || ''))).length === 0 && (
                                   <div className="p-3 text-center text-muted small italic">Không tìm thấy kết quả</div>
                                 )}
                               </div>

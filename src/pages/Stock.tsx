@@ -5,6 +5,17 @@ import { format, parseISO, endOfMonth } from 'date-fns';
 import { StockAIAssistant } from '../components/StockAIAssistant';
 import { IngredientLossAnalyzer } from '../components/IngredientLossAnalyzer';
 
+const unsignedString = (str: string) =>
+  str.normalize('NFC').toLowerCase()
+    .replace(/[àáạảãâầấậẩẫăằắặẳẵ]/g, 'a')
+    .replace(/[èéẹẻẽêềếệểễ]/g, 'e')
+    .replace(/[ìíịỉĩ]/g, 'i')
+    .replace(/[òóọỏõôồốộổỗơờớợởỡ]/g, 'o')
+    .replace(/[ùúụủũưừứựửữ]/g, 'u')
+    .replace(/[ỳýỵỷỹ]/g, 'y')
+    .replace(/đ/g, 'd')
+    .replace(/[\u0300\u0301\u0309\u0303\u0327\u0309\u0323]/g, '');
+
 interface IngredientRow {
   id: string;
   name: string;
@@ -277,7 +288,7 @@ const Stock = () => {
   };
 
   const filtered = rows.filter(r => {
-    const matchSearch = r.name.toLowerCase().includes(search.toLowerCase());
+    const matchSearch = unsignedString(r.name).includes(unsignedString(search));
     const matchCat = filterCategory ? r.category_name === filterCategory : true;
     const matchOrderType = filterOrderType ? r.order_type_id === filterOrderType : true;
     return matchSearch && matchCat && matchOrderType;
