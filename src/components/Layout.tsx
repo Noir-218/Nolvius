@@ -27,7 +27,7 @@ const navItems = [
   { path: '/recipes', label: 'Công Thức', icon: BookOpen, roles: ['master', 'SM', 'SS', 'MB'] },
   { path: '/stock', label: 'Tồn Kho', icon: Archive, roles: ['master', 'SM', 'SS', 'MB'] },
   { path: '/transactions', label: 'Giao Dịch Kho', icon: ArrowRightLeft, roles: ['master', 'SM', 'SS', 'MB'] },
-  { path: '/sales', label: 'Nhập Bán Hàng', icon: ShoppingCart, roles: ['master', 'SM', 'SS', 'MB'] },
+  { path: '/sales', label: 'Nhập Bán Hàng', icon: ShoppingCart, roles: ['master', 'SM', 'SS', 'MB', 'staff'] },
   { path: '/audit', label: 'Kiểm Kê Kho', icon: ClipboardCheck, roles: ['master', 'SM', 'SS', 'MB', 'staff'] },
   { path: '/analysis', label: 'Phân Tích Tiêu Hao', icon: TrendingUp, roles: ['master', 'SM', 'SS', 'MB'] },
   { path: '/forecast', label: 'Dự Đoán Nhập Hàng', icon: Calculator, roles: ['master', 'SM', 'SS', 'MB'] },
@@ -129,7 +129,7 @@ const Layout = () => {
         .premium-shadow { box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.02) !important; }
         .active-nav-bg { background-color: #f0f9f9 !important; color: #0d9488 !important; }
       `}</style>
-      
+
       {/* Mobile Sidebar Overlay */}
       {isMenuOpen && (
         <div
@@ -160,7 +160,7 @@ const Layout = () => {
             <X size={20} />
           </button>
         </div>
-        
+
         <nav className="flex-1 overflow-y-auto py-6 scrollbar-hide">
           <p className={`px-6 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-4 transition-all duration-300 whitespace-nowrap overflow-hidden ${isSidebarCollapsed ? 'lg:opacity-0 lg:h-0 lg:mb-0' : 'opacity-100'}`}>
             Danh mục chính
@@ -246,22 +246,20 @@ const Layout = () => {
           <div className="flex items-center gap-3">
             <button
               onClick={() => setIsLoungeOpen(!isLoungeOpen)}
-              className={`w-10 h-10 flex items-center justify-center rounded-2xl border cursor-pointer transition-all premium-shadow group ${
-                isLoungeOpen
-                  ? 'bg-amber-500 border-amber-400 shadow-amber-200 shadow-lg'
-                  : 'bg-gray-50 border-gray-100 hover:border-amber-300 hover:bg-amber-50/40'
-              }`}
+              className={`w-10 h-10 flex items-center justify-center rounded-2xl border cursor-pointer transition-all premium-shadow group ${isLoungeOpen
+                ? 'bg-amber-500 border-amber-400 shadow-amber-200 shadow-lg'
+                : 'bg-gray-50 border-gray-100 hover:border-amber-300 hover:bg-amber-50/40'
+                }`}
               title="Góc Chill Staff"
             >
               <Sparkles
                 size={18}
-                className={`transition-all duration-300 ${
-                  isLoungeOpen ? 'text-white rotate-12' : 'text-gray-400 group-hover:text-amber-500'
-                }`}
+                className={`transition-all duration-300 ${isLoungeOpen ? 'text-white rotate-12' : 'text-gray-400 group-hover:text-amber-500'
+                  }`}
               />
             </button>
 
-             <div 
+            <div
               onClick={() => navigate('/profile')}
               className="flex items-center bg-gray-50 px-4 py-2 rounded-2xl border border-gray-100 hover:border-teal-200 hover:bg-teal-50/30 cursor-pointer transition-all premium-shadow"
             >

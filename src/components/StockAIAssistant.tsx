@@ -283,9 +283,8 @@ Yêu cầu đối với AI:
             <div className="flex items-center gap-1">
               <button
                 onClick={() => setShowSettings(!showSettings)}
-                className={`p-2 rounded-xl transition-all ${
-                  showSettings ? 'bg-white/25 text-white' : 'hover:bg-white/10 text-teal-100 hover:text-white'
-                }`}
+                className={`p-2 rounded-xl transition-all ${showSettings ? 'bg-white/25 text-white' : 'hover:bg-white/10 text-teal-100 hover:text-white'
+                  }`}
                 title="Cài đặt API Key"
               >
                 <Settings size={18} />
@@ -311,10 +310,10 @@ Yêu cầu đối với AI:
                     <h6 className="font-black text-sm uppercase tracking-wide mb-0">Cấu hình Gemini API Key</h6>
                   </div>
                   <p className="text-xs text-gray-500 leading-relaxed mb-4">
-                    Để sử dụng tính năng AI phân tích tồn kho miễn phí, bạn cần sử dụng <strong>Gemini API Key</strong> của riêng mình. 
+                    Để sử dụng tính năng AI phân tích tồn kho miễn phí, bạn cần sử dụng <strong>Gemini API Key</strong> của riêng mình.
                     Dữ liệu được lưu cục bộ trên thiết bị của bạn.
                   </p>
-                  
+
                   <form onSubmit={handleSaveApiKey}>
                     <div className="mb-3">
                       <label className="text-[10px] text-gray-400 font-black uppercase tracking-widest block mb-2">API Key của bạn</label>
@@ -372,21 +371,19 @@ Yêu cầu đối với AI:
                   className={`flex gap-3 max-w-[85%] ${isAI ? 'self-start' : 'self-end flex-row-reverse'}`}
                 >
                   <div
-                    className={`w-8 h-8 rounded-2xl flex items-center justify-center shrink-0 shadow-sm border ${
-                      isAI
+                    className={`w-8 h-8 rounded-2xl flex items-center justify-center shrink-0 shadow-sm border ${isAI
                         ? 'bg-teal-50 text-teal-600 border-teal-100'
                         : 'bg-emerald-500 text-white border-emerald-400'
-                    }`}
+                      }`}
                   >
                     {isAI ? <Bot size={16} /> : <User size={16} />}
                   </div>
                   <div className="flex flex-col">
                     <div
-                      className={`px-4 py-3 rounded-3xl ${
-                        isAI
+                      className={`px-4 py-3 rounded-3xl ${isAI
                           ? 'bg-gray-50 text-gray-800 rounded-tl-none border border-gray-100'
                           : 'bg-gradient-to-br from-teal-500 to-emerald-600 text-white rounded-tr-none'
-                      }`}
+                        }`}
                     >
                       {isAI ? (
                         <div className="space-y-1">{renderMessageContent(msg.content)}</div>

@@ -774,6 +774,73 @@ export default function Transactions() {
     }
   };
 
+  const handleExportInTransferExcel = async (group: TransactionGroup) => {
+    try {
+      const toastId = toast.loading('Đang tạo file Excel...');
+      
+      // Fetch the template file
+      const response = await fetch('/templates/phieu_linh_template.xlsx');
+      if (!response.ok) throw new Error('Không thể tải file mẫu Excel');
+      const arrayBuffer = await response.arrayBuffer();
+      
+      // Read the workbook
+      const workbook = XLSX.read(new Uint8Array(arrayBuffer), { type: 'array' });
+      const sheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[sheetName];
+      
+      // Clear any data from row index 5 onwards to override the template placeholder values
+      const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1:K3');
+      for (let r = 5; r <= range.e.r; r++) {
+        for (let c = 0; c <= 10; c++) {
+          const cellRef = XLSX.utils.encode_cell({ r, c });
+          delete worksheet[cellRef];
+        }
+      }
+      
+      let currentRow = 5;
+      const formattedDate = group.transaction_date 
+        ? format(parseISO(group.transaction_date), 'dd/MM/yyyy') 
+        : '';
+        
+      for (const item of group.items) {
+        const code = item.ingredient_id || '';
+        const unit = item.ingredients?.unit || '';
+        const qty = Math.abs(item.quantity);
+        
+        if (code) worksheet[XLSX.utils.encode_cell({ r: currentRow, c: 0 })] = { t: 's', v: code };
+        if (unit) worksheet[XLSX.utils.encode_cell({ r: currentRow, c: 2 })] = { t: 's', v: unit };
+        worksheet[XLSX.utils.encode_cell({ r: currentRow, c: 6 })] = { t: 'n', v: qty };
+        if (formattedDate) worksheet[XLSX.utils.encode_cell({ r: currentRow, c: 7 })] = { t: 's', v: formattedDate };
+        
+        currentRow++;
+      }
+      
+      // Update worksheet range reference
+      range.e.r = Math.max(range.e.r, currentRow - 1);
+      worksheet['!ref'] = XLSX.utils.encode_range(range);
+      
+      const wbout = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+      const blob = new Blob([wbout], { type: 'application/octet-stream' });
+      const url = URL.createObjectURL(blob);
+      
+      const a = document.createElement('a');
+      a.href = url;
+      const shortId = group.id.substring(0, 8);
+      a.download = `phieu_nhap_dieu_chuyen_${shortId}_${group.transaction_date}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      toast.success('Xuất file Excel thành công!', { id: toastId });
+    } catch (err: any) {
+      console.error(err);
+      toast.error('Lỗi khi xuất file Excel: ' + err.message);
+    }
+  };
+
+
+
   const handleCreateOrUpdateBranch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!branchName.trim()) {
@@ -1208,6 +1275,18 @@ export default function Transactions() {
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         handleExportExcel(group);
+                                      }}
+                                      className="btn btn-sm border-0 rounded-circle p-2 hover-shadow text-success"
+                                      title="Xuất file Excel"
+                                    >
+                                      <FileSpreadsheet size={16} />
+                                    </button>
+                                  )}
+                                  {group.type === 'IN_TRANSFER' && (
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleExportInTransferExcel(group);
                                       }}
                                       className="btn btn-sm border-0 rounded-circle p-2 hover-shadow text-success"
                                       title="Xuất file Excel"
