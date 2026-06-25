@@ -132,6 +132,8 @@ export default function Audit() {
   };
 
   const [auditHistory, setAuditHistory] = useState<Tables<'stock_audits'>[]>([]);
+  const [historyDate, setHistoryDate] = useState<string>(selectedDate);
+  const [historySearch, setHistorySearch] = useState<string>('');
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -333,12 +335,11 @@ export default function Audit() {
     const { data } = await supabase
       .from('stock_audits')
       .select('*, ingredients(name, unit), profiles(full_name, email)')
-      .order('audit_date', { ascending: false })
-      .order('created_at', { ascending: false })
-      .limit(100);
-    if (data) setAuditHistory(data as unknown as Tables<'stock_audits'>[]);
+      .eq('audit_date', historyDate)
+      .order('created_at', { ascending: false });
+    if (data) setAuditHistory(data as any);
     setLoading(false);
-  }, []);
+  }, [historyDate]);
 
   useEffect(() => {
     if (viewMode !== 'daily') return;
@@ -403,7 +404,7 @@ export default function Audit() {
     if (viewMode === 'daily') fetchDailyData();
     else if (viewMode === 'opening') fetchMonthlyOpening();
     else if (viewMode === 'history') fetchHistory();
-  }, [viewMode, selectedDate, fetchDailyData, fetchHistory, fetchMonthlyOpening]);
+  }, [viewMode, selectedDate, historyDate, fetchDailyData, fetchHistory, fetchMonthlyOpening]);
 
   // calcBreakdowns is now loaded from DB in fetchDailyData / fetchMonthlyOpening
 
@@ -618,6 +619,7 @@ export default function Audit() {
           actual_stock: actual,
           notes: '',
           audited_by: user?.id,
+          created_at: new Date().toISOString(),
           store_calc_breakdown: finalStoreBreakdown,
           counter_calc_breakdown: finalCounterBreakdown,
         };
@@ -917,8 +919,15 @@ export default function Audit() {
   }
 
   if (viewMode === 'history') {
+    const filteredHistory = auditHistory.filter(a => {
+      const item = a as any;
+      const name = item.ingredients?.name || '';
+      return unsignedString(name).includes(unsignedString(historySearch));
+    });
+
     return (
       <div className="container-fluid py-4 pb-10">
+        {/* HEADER & DATE PICKER */}
         <div className="row g-3 align-items-center mb-6">
           <div className="col-12 col-md-auto me-auto text-center text-md-start">
              <div className="flex items-center gap-4">
@@ -931,33 +940,59 @@ export default function Audit() {
                 </div>
              </div>
           </div>
-          <div className="col-12 col-md-auto">
-            <button onClick={() => setViewMode('daily')} className="btn btn-teal-ghost rounded-xl transition-all">← Quay lại</button>
+          <div className="col-12 col-md-auto flex items-center gap-3">
+             <div className="flex items-center bg-white rounded-2xl shadow-sm border border-teal-600/20 p-1 border-s-4">
+                <button onClick={() => setHistoryDate(format(subDays(parseDate(historyDate), 1), 'yyyy-MM-dd'))} className="p-2 text-teal-600 hover:bg-teal-50 rounded-xl transition-all"><ChevronLeft size={20} /></button>
+                <input type="date" value={historyDate} onChange={e => setHistoryDate(e.target.value)} className="border-0 bg-transparent text-center font-black text-gray-800 outline-none px-2 text-sm" />
+                <button onClick={() => {
+                    const next = format(new Date(new Date(historyDate).getTime() + 86400000), 'yyyy-MM-dd');
+                    if (next <= todayStr) setHistoryDate(next);
+                  }} disabled={historyDate >= todayStr} className="p-2 text-teal-600 hover:bg-teal-50 rounded-xl disabled:opacity-30 transition-all"><ChevronRight size={20} /></button>
+             </div>
+             <button onClick={() => setViewMode('daily')} className="btn btn-teal-ghost rounded-xl transition-all">← Quay lại</button>
           </div>
         </div>
 
+        {/* SEARCH BAR */}
+        <div className="bg-white rounded-4 p-4 mb-6 shadow-sm border border-gray-100">
+           <div className="relative">
+              <input type="text" placeholder="Tìm tên nguyên liệu..." value={historySearch} onChange={(e) => setHistorySearch(e.target.value)} className="w-full pl-11 pr-4 py-3 bg-gray-50 border-0 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-teal-500/20 focus:bg-white transition-all outline-none" />
+              <Search className="absolute left-4 top-3.5 text-gray-400" size={18} />
+           </div>
+        </div>
+
+        {/* DETAILED TABLE */}
         <div className="bg-white rounded-4 shadow-sm border border-gray-100 overflow-hidden premium-shadow">
           <div className="table-responsive">
             <table className="table table-hover align-middle mb-0">
               <thead>
                 <tr className="bg-gray-50/50">
-                  <th className="px-6 py-4 text-gray-400 text-uppercase text-[10px] font-black tracking-widest border-0">Ngày KK</th>
-                  <th className="px-6 py-4 text-gray-400 text-uppercase text-[10px] font-black tracking-widest border-0">Nguyên Liệu</th>
-                  <th className="px-4 py-4 text-end text-gray-400 text-uppercase text-[10px] font-black tracking-widest border-0">Lý Thuyết</th>
-                  <th className="px-4 py-4 text-end text-gray-400 text-uppercase text-[10px] font-black tracking-widest border-0">Thực Tế</th>
+                  <th className="px-6 py-4 text-gray-400 text-uppercase text-[10px] font-black tracking-widest border-0">Người Kiểm</th>
+                  <th className="px-6 py-4 text-gray-400 text-uppercase text-[10px] font-black tracking-widest border-0">Giờ Kiểm</th>
+                  <th className="px-6 py-4 text-gray-400 text-uppercase text-[10px] font-black tracking-widest border-0">Tên Nguyên Liệu</th>
+                  <th className="px-4 py-4 text-end text-gray-400 text-uppercase text-[10px] font-black tracking-widest border-0">Tồn Lý Thuyết</th>
+                  <th className="px-4 py-4 text-end text-gray-400 text-uppercase text-[10px] font-black tracking-widest border-0">Tồn Thực Tế</th>
                   <th className="px-4 py-4 text-end text-gray-400 text-uppercase text-[10px] font-black tracking-widest border-0">Chênh Lệch</th>
-                  <th className="px-6 py-4 text-gray-400 text-uppercase text-[10px] font-black tracking-widest border-0">Ghi Chú</th>
                 </tr>
               </thead>
               <tbody className="border-0">
-                {loading ? (<tr><td colSpan={6} className="py-20 text-center font-bold text-gray-400">Đang tải...</td></tr>) : 
-                 auditHistory.map(a => {
-                    const item = a as unknown as Tables<'stock_audits'> & { ingredients: { name: string } | null };
+                {loading ? (
+                  <tr><td colSpan={6} className="py-20 text-center font-bold text-gray-400">Đang tải...</td></tr>
+                ) : filteredHistory.length === 0 ? (
+                  <tr><td colSpan={6} className="py-20 text-center font-bold text-gray-400">Không có dữ liệu kiểm kê</td></tr>
+                ) : (
+                  filteredHistory.map(a => {
+                    const item = a as any;
                     const variance = (item.actual_stock ?? 0) - (item.theoretical_stock ?? 0);
+                    const auditorName = item.profiles?.full_name || item.profiles?.email || 'Hệ thống';
+                    const auditTime = item.created_at ? format(parseISO(item.created_at), 'HH:mm:ss') : '-';
                     return (
                       <tr key={item.id}>
-                        <td className="px-6 py-4 border-gray-50">
-                           <span className="text-sm font-black text-teal-600">{item.audit_date ? format(parseISO(item.audit_date), 'dd/MM/yyyy') : '-'}</span>
+                        <td className="px-6 py-4 border-gray-50 text-gray-800 font-bold text-sm">
+                           {auditorName}
+                        </td>
+                        <td className="px-6 py-4 border-gray-50 text-gray-800 font-bold text-sm">
+                           {auditTime}
                         </td>
                         <td className="px-6 py-4 border-gray-50">
                            <span className="fw-black text-gray-800 text-uppercase small">{item.ingredients?.name}</span>
@@ -967,10 +1002,10 @@ export default function Audit() {
                         <td className={`px-4 py-4 text-end border-gray-50 font-black ${Math.abs(variance) < 0.001 ? 'text-teal-500' : variance < 0 ? 'text-red-500' : 'text-teal-500'}`}>
                            {variance > 0.001 ? '+' : ''}{variance.toLocaleString()}
                         </td>
-                        <td className="px-6 py-4 border-gray-50 text-gray-400 small italic">{item.notes || '-'}</td>
                       </tr>
                     );
-                 })}
+                  })
+                )}
               </tbody>
             </table>
           </div>

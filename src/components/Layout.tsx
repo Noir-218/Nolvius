@@ -21,12 +21,12 @@ import {
 import { LoungeBubble } from './LoungeBubble';
 
 const navItems = [
-  { path: '/', label: 'SOS', icon: ShoppingCart, roles: ['master', 'SM', 'SS', 'MB'] },
+  { path: '/', label: 'SOS', icon: ShoppingCart, roles: ['master', 'SM', 'SS', 'MB', 'staff'] },
   { path: '/ingredients', label: 'Nguyên Liệu', icon: Package, roles: ['master', 'SM', 'SS', 'MB'] },
   { path: '/products', label: 'Sản Phẩm', icon: Coffee, roles: ['master', 'SM', 'SS', 'MB'] },
   { path: '/recipes', label: 'Công Thức', icon: BookOpen, roles: ['master', 'SM', 'SS', 'MB'] },
-  { path: '/stock', label: 'Tồn Kho', icon: Archive, roles: ['master', 'SM', 'SS', 'MB'] },
-  { path: '/transactions', label: 'Giao Dịch Kho', icon: ArrowRightLeft, roles: ['master', 'SM', 'SS', 'MB'] },
+  { path: '/stock', label: 'Tồn Kho', icon: Archive, roles: ['master', 'SM', 'SS', 'MB', 'staff'] },
+  { path: '/transactions', label: 'Giao Dịch Kho', icon: ArrowRightLeft, roles: ['master', 'SM', 'SS', 'MB', 'staff'] },
   { path: '/sales', label: 'Nhập Bán Hàng', icon: ShoppingCart, roles: ['master', 'SM', 'SS', 'MB', 'staff'] },
   { path: '/audit', label: 'Kiểm Kê Kho', icon: ClipboardCheck, roles: ['master', 'SM', 'SS', 'MB', 'staff'] },
   { path: '/analysis', label: 'Phân Tích Tiêu Hao', icon: TrendingUp, roles: ['master', 'SM', 'SS', 'MB'] },
