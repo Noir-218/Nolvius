@@ -45,10 +45,6 @@ export default function Dashboard() {
     fetchPurchasing();
   }, []);
 
-  if (role === 'staff') {
-    return <Navigate to="/audit" replace />;
-  }
-
   if (loading) return (
     <div className="flex flex-col items-center justify-center p-20">
       <div className="spinner-border text-teal-600 mb-3" role="status"></div>

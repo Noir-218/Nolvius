@@ -1,12 +1,11 @@
 import { useState, useEffect } from 'react';
-import { useLocation, Navigate } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import { ProductsTab } from '../components/products/ProductsTab';
 import { CategoriesTab } from '../components/products/CategoriesTab';
 import { RecipesTab } from '../components/products/RecipesTab';
-import { useAuth } from '../contexts/AuthContext';
+
 
 const Products = () => {
-  const { role } = useAuth();
   const location = useLocation();
   const [activeTab, setActiveTab] = useState<'products' | 'categories' | 'recipes'>(
     location.pathname.includes('recipes') ? 'recipes' : 'products'
@@ -20,7 +19,7 @@ const Products = () => {
     }
   }, [location.pathname]);
 
-  if (role === 'staff') return <Navigate to="/audit" replace />;
+
 
   const tabs = [
     { id: 'products', label: 'Sản Phẩm' },

@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { Navigate } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
+
+
 import { SuppliersTab } from '../components/ingredients/SuppliersTab';
 import { CategoriesTab } from '../components/ingredients/CategoriesTab';
 import { IngredientsTab } from '../components/ingredients/IngredientsTab';
@@ -8,10 +8,9 @@ import { OrderTypesTab } from '../components/ingredients/OrderTypesTab';
 import { Package, FolderTree, Truck, ClipboardList } from 'lucide-react';
 
 const Ingredients = () => {
-  const { role } = useAuth();
   const [activeTab, setActiveTab] = useState<'ingredients' | 'categories' | 'order-types' | 'suppliers'>('ingredients');
 
-  if (role === 'staff') return <Navigate to="/audit" replace />;
+
 
   const tabs = [
     { id: 'ingredients', label: 'Nguyên Liệu', icon: Package },

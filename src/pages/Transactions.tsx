@@ -300,10 +300,6 @@ export default function Transactions() {
     fetchDailyRevenue();
   }, [txDate, txType]);
 
-  if (role === 'staff') {
-    return <Navigate to="/audit" replace />;
-  }
-
   const resetForm = () => {
     setEditingReferenceId(null);
     setTxType('IN');
