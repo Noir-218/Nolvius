@@ -6,7 +6,7 @@ import { Modal } from '../components/ui/Modal';
 import { format, startOfMonth, parseISO } from 'date-fns';
 import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
-import { Navigate } from 'react-router-dom';
+
 
 const TYPE_LABELS: Record<string, string> = {
   'IN': 'Nhập Hàng',
@@ -93,7 +93,7 @@ const emptyLine = (): LineItem => ({
 });
 
 export default function Transactions() {
-  const { user, role } = useAuth();
+  const { user } = useAuth();
   
   const [activeTab, setActiveTab] = useState<'history' | 'branches'>('history');
   const [transactions, setTransactions] = useState<Transaction[]>([]);

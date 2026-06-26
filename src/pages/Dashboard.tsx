@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { ShoppingCart, AlertTriangle, TrendingDown, CheckCircle } from 'lucide-react';
-import { Navigate } from 'react-router-dom';
+
 import { useAuth } from '../contexts/AuthContext';
 
 interface PurchasingItem {
@@ -14,7 +14,7 @@ interface PurchasingItem {
 }
 
 export default function Dashboard() {
-  const { role } = useAuth();
+  useAuth();
   
   const [items, setItems] = useState<PurchasingItem[]>([]);
   const [loading, setLoading] = useState(true);
