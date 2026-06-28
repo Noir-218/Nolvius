@@ -159,6 +159,12 @@ export default function Transactions() {
   const [isProductDropdownOpen, setIsProductDropdownOpen] = useState(false);
   const [productSelectedIndex, setProductSelectedIndex] = useState(-1);
 
+  // Export Modal State
+  const [exportGroup, setExportGroup] = useState<TransactionGroup | null>(null);
+  const [isExportPromptOpen, setIsExportPromptOpen] = useState(false);
+  const [showExportForm, setShowExportForm] = useState(false);
+  const [exportExtraData, setExportExtraData] = useState<Record<string, string>>({});
+
   const fetchData = async () => {
     setLoading(true);
     let query = supabase
@@ -708,7 +714,14 @@ export default function Transactions() {
     );
   };
 
-  const handleExportExcel = (group: TransactionGroup) => {
+  const promptExportExcel = (group: TransactionGroup) => {
+    setExportGroup(group);
+    setIsExportPromptOpen(true);
+    setShowExportForm(false);
+    setExportExtraData({});
+  };
+
+  const handleExportExcel = (group: TransactionGroup, extraData?: Record<string, string>) => {
     try {
       const toastId = toast.loading('Đang tạo file Excel...');
       
@@ -726,8 +739,7 @@ export default function Transactions() {
         worksheet[XLSX.utils.encode_cell({ r: 4, c })] = { t: 's', v: h };
       });
       
-      // Ghi dữ liệu từ hàng 6 trở đi — CHỈ ghi các cột có dữ liệu, 
-      // các cột trống sẽ không tạo cell → giống hệt file mẫu gốc
+      // Ghi dữ liệu từ hàng 6 trở đi
       let currentRow = 5; // index 5 = hàng 6
       for (const item of group.items) {
         const code = item.ingredient_id || '';
@@ -739,6 +751,14 @@ export default function Transactions() {
         if (name) worksheet[XLSX.utils.encode_cell({ r: currentRow, c: 1 })] = { t: 's', v: name };
         if (unit) worksheet[XLSX.utils.encode_cell({ r: currentRow, c: 2 })] = { t: 's', v: unit };
         worksheet[XLSX.utils.encode_cell({ r: currentRow, c: 5 })] = { t: 'n', v: qty };
+        
+        if (extraData) {
+          headers.forEach((h, c) => {
+            if (extraData[h] && extraData[h].trim() !== '') {
+              worksheet[XLSX.utils.encode_cell({ r: currentRow, c })] = { t: 's', v: extraData[h] };
+            }
+          });
+        }
         
         currentRow++;
       }
@@ -1270,7 +1290,7 @@ export default function Transactions() {
                                     <button
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        handleExportExcel(group);
+                                        promptExportExcel(group);
                                       }}
                                       className="btn btn-sm border-0 rounded-circle p-2 hover-shadow text-success"
                                       title="Xuất file Excel"
@@ -1936,6 +1956,74 @@ export default function Transactions() {
             </button>
           </div>
         </form>
+      </Modal>
+
+      {/* Modal Xuất Excel */}
+      <Modal isOpen={isExportPromptOpen} onClose={() => setIsExportPromptOpen(false)} title="Tùy chọn xuất Excel" size={showExportForm ? "lg" : "md"}>
+        <div className="p-4">
+          {!showExportForm ? (
+            <div className="text-center py-3">
+              <p className="mb-4" style={{ fontSize: '16px' }}>Bạn có muốn bổ sung dữ liệu không?</p>
+              <div className="d-flex justify-content-center gap-3">
+                <button 
+                  className="btn btn-outline-secondary px-4 fw-bold" 
+                  onClick={() => {
+                    setIsExportPromptOpen(false);
+                    if (exportGroup) handleExportExcel(exportGroup);
+                  }}
+                >
+                  Không
+                </button>
+                <button 
+                  className="btn btn-primary px-4 fw-bold" 
+                  onClick={() => setShowExportForm(true)}
+                >
+                  Có
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div>
+              <p className="mb-3 text-muted">Nhập dữ liệu vào các cột để điền cho tất cả các dòng trong file Excel:</p>
+              <div className="row g-3">
+                {[
+                  "Mã hàng", "Tên mặt hàng", "Đvt", "Mã kho", "Mã lô", "Số lượng", 
+                  "Giá đích danh", "Giá", "Tiền", "Mã nx", "Tk nợ", "Tk có", 
+                  "Vụ việc", "Bộ phận", "Lsx", "Sản phẩm", "Hợp đồng", "Phí", "Khế ước"
+                ].map(header => (
+                  <div key={header} className="col-md-4">
+                    <label className="form-label small fw-bold text-muted mb-1">{header}</label>
+                    <input 
+                      type="text" 
+                      className="form-control form-control-sm"
+                      value={exportExtraData[header] || ''}
+                      onChange={(e) => setExportExtraData({...exportExtraData, [header]: e.target.value})}
+                      placeholder={`Nhập ${header.toLowerCase()}...`}
+                    />
+                  </div>
+                ))}
+              </div>
+              <div className="d-flex justify-content-end gap-2 mt-4 pt-3 border-top">
+                <button 
+                  className="btn btn-light fw-bold px-4 rounded-pill" 
+                  onClick={() => setIsExportPromptOpen(false)}
+                >
+                  Hủy
+                </button>
+                <button 
+                  className="btn btn-success fw-bold px-4 rounded-pill d-flex align-items-center" 
+                  onClick={() => {
+                    setIsExportPromptOpen(false);
+                    if (exportGroup) handleExportExcel(exportGroup, exportExtraData);
+                  }}
+                >
+                  <FileSpreadsheet size={16} className="me-2" />
+                  Xuất Excel
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </Modal>
     </div>
   );
