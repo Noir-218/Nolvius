@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { supabase } from '../lib/supabase';
+import { useFacility } from '../contexts/FacilityContext';
 import { Upload, CheckCircle2, AlertCircle, Calendar, Trash2, Edit2, Save, X, RefreshCw, TrendingDown } from 'lucide-react';
 import * as xlsx from 'xlsx';
 import { useAuth } from '../contexts/AuthContext';
@@ -34,6 +34,8 @@ interface SaleRecord {
 
 export default function Sales() {
   const { user } = useAuth();
+  const { facilityClient } = useFacility();
+  const supabase = facilityClient!;
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [activeTab, setActiveTab] = useState<'import' | 'history'>('import');

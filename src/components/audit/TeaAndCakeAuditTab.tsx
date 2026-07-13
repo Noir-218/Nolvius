@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Tables, TablesInsert, TablesUpdate } from '../../types/database.types';
-import { supabase } from '../../lib/supabase';
+import { useFacility } from '../../contexts/FacilityContext';
 import { useAuth } from '../../contexts/AuthContext';
 import toast from 'react-hot-toast';
 import {
@@ -97,6 +97,7 @@ interface Props {
 
 export const TeaAndCakeAuditTab: React.FC<Props> = ({ selectedDate }) => {
   const { user } = useAuth();
+  const { facilityClient: supabase } = useFacility();
   const today = todayStr();
 
   const [editingMfg, setEditingMfg] = useState<{ ingId: string, lotIdx: number } | null>(null);

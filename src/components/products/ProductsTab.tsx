@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { supabase } from '../../lib/supabase';
+import { useFacility } from '../../contexts/FacilityContext';
 import { Plus, Edit2, Trash2, Search, Upload } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import * as xlsx from 'xlsx';
@@ -25,6 +25,7 @@ const unsignedString = (str: string) => {
 };
 
 export const ProductsTab = () => {
+  const { facilityClient: supabase } = useFacility();
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<{id: string, name: string}[]>([]);
   const [loading, setLoading] = useState(true);

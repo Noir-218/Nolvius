@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
+import { useFacility } from '../contexts/FacilityContext';
 import { Plus, Trash2, FileText, ChevronLeft, ChevronRight } from 'lucide-react';
 import { format, subDays, parseISO } from 'date-fns';
 import { useAuth } from '../contexts/AuthContext';
@@ -18,6 +18,7 @@ interface Expense {
 
 export default function Expenses() {
   const { user, role } = useAuth();
+  const { facilityClient: supabase } = useFacility();
   
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);

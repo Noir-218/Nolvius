@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
+import { useFacility } from '../contexts/FacilityContext';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell } from 'recharts';
 import { format, subDays } from 'date-fns';
 import { RefreshCw } from 'lucide-react';
@@ -55,6 +55,7 @@ const CustomTooltip = ({ active, payload }: any) => {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function Analysis() {
+  const { facilityClient: supabase } = useFacility();
   const [periodDays, setPeriodDays] = useState(30);
   const [data, setData] = useState<AnalysisRow[]>([]);
   const [loading, setLoading] = useState(true);

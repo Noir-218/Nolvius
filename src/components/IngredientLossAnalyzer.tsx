@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
+import { useFacility } from '../contexts/FacilityContext';
 import { X, Calendar, ClipboardList, TrendingDown, AlertCircle, Info } from 'lucide-react';
 import { format, parseISO, endOfMonth } from 'date-fns';
 
@@ -8,6 +8,7 @@ interface IngredientLossAnalyzerProps {
   ingredientName: string;
   unit: string;
   selectedMonth: string;
+  selectedClosingDate?: string; // optional closing date
   onClose: () => void;
 }
 
@@ -33,8 +34,10 @@ export const IngredientLossAnalyzer: React.FC<IngredientLossAnalyzerProps> = ({
   ingredientName,
   unit,
   selectedMonth,
+  selectedClosingDate,
   onClose,
 }) => {
+  const { facilityClient: supabase } = useFacility();
   const [audits, setAudits] = useState<AuditLog[]>([]);
   const [transactions, setTransactions] = useState<TransactionLog[]>([]);
   const [loading, setLoading] = useState(true);
@@ -49,25 +52,26 @@ export const IngredientLossAnalyzer: React.FC<IngredientLossAnalyzerProps> = ({
         const parsedDate = parseISO(`${selectedMonth}-01`);
         const monthStart = format(parsedDate, 'yyyy-MM-dd');
         const monthEnd = format(endOfMonth(parsedDate), 'yyyy-MM-dd');
+        const effectiveEndDate = selectedClosingDate || monthEnd;
 
-        // 1. Fetch audits for this ingredient
+        // 1. Fetch audits for this ingredient up to effectiveEndDate
         const { data: auditData, error: auditErr } = await supabase
           .from('stock_audits')
           .select('id, audit_date, actual_stock, theoretical_stock, variance, notes')
           .eq('ingredient_id', ingredientId)
           .gte('audit_date', monthStart)
-          .lte('audit_date', monthEnd)
+          .lte('audit_date', effectiveEndDate)
           .order('audit_date', { ascending: false });
 
         if (auditErr) throw auditErr;
 
-        // 2. Fetch transactions for this ingredient
+        // 2. Fetch transactions for this ingredient up to effectiveEndDate
         const { data: txData, error: txErr } = await supabase
           .from('stock_transactions')
           .select('id, type, quantity, transaction_date, notes')
           .eq('ingredient_id', ingredientId)
           .gte('transaction_date', monthStart)
-          .lte('transaction_date', monthEnd)
+          .lte('transaction_date', effectiveEndDate)
           .order('transaction_date', { ascending: false });
 
         if (txErr) throw txErr;
@@ -83,7 +87,7 @@ export const IngredientLossAnalyzer: React.FC<IngredientLossAnalyzerProps> = ({
     };
 
     fetchData();
-  }, [ingredientId, selectedMonth]);
+  }, [ingredientId, selectedMonth, selectedClosingDate]);
 
   // Statistics
   const negativeAudits = audits.filter(a => {
@@ -132,6 +136,11 @@ export const IngredientLossAnalyzer: React.FC<IngredientLossAnalyzerProps> = ({
             </h5>
             <p className="text-xs text-teal-100 font-bold tracking-widest mt-1 mb-0 uppercase">
               {ingredientName} ({unit}) • Tháng {selectedMonth}
+              {selectedClosingDate && (
+                <span className="ms-2 bg-amber-400/30 text-amber-100 px-2 py-0.5 rounded-lg text-[10px] font-black">
+                  ⚡ Chốt đến {format(parseISO(selectedClosingDate), 'dd/MM/yyyy')}
+                </span>
+              )}
             </p>
           </div>
           <button

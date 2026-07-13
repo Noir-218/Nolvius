@@ -254,19 +254,21 @@ export const LoungeBubble: React.FC<LoungeBubbleProps> = ({ isOpen, onClose }) =
                   </div>
                 )}
 
-                <div className="p-4 pt-6">
+                <div className="p-4 pt-6 flex flex-col" style={{ maxHeight: '320px' }}>
                   {/* Note text content */}
                   <textarea
                     value={note.text}
                     onChange={(e) => updateNote(note.id, e.target.value)}
                     placeholder="Viết gì đó..."
-                    rows={note.text.split('\n').length || 2}
-                    className="w-full bg-transparent border-none resize-none focus:ring-0 text-amber-900 font-medium leading-relaxed placeholder:text-amber-900/30 text-base outline-none mb-2"
+                    rows={Math.min(note.text.split('\n').length || 2, 4)}
+                    className="w-full bg-transparent border-none resize-none focus:ring-0 text-amber-900 font-medium leading-relaxed placeholder:text-amber-900/30 text-base outline-none mb-2 shrink-0"
                   />
 
-                  {/* Checklist items */}
+                  {/* Checklist items — scrollable when long */}
                   {note.todos && note.todos.length > 0 && (
-                    <div className="mt-3 space-y-1.5 border-t border-amber-900/10 pt-3 relative z-10">
+                    <div className="mt-1 border-t border-amber-900/10 pt-3 relative z-10 flex-1 overflow-y-auto min-h-0 space-y-1.5 pr-1"
+                      style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(180,120,60,0.25) transparent' }}
+                    >
                       {note.todos.map((todo) => (
                         <div key={todo.id} className="flex items-center gap-2 group/todo">
                           <button
@@ -300,8 +302,8 @@ export const LoungeBubble: React.FC<LoungeBubbleProps> = ({ isOpen, onClose }) =
                     </div>
                   )}
 
-                  {/* Add Checkbox Button */}
-                  <div className="mt-3 flex justify-start relative z-10">
+                  {/* Add Checkbox Button — always pinned at bottom */}
+                  <div className="mt-3 flex justify-start relative z-10 shrink-0">
                     <button
                       onClick={() => addTodo(note.id)}
                       className="flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-amber-800/60 hover:text-amber-900 hover:bg-black/5 px-2.5 py-1.5 rounded-xl border border-amber-900/10 transition-all bg-white/35"

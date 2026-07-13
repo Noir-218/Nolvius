@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
-import { Search, AlertTriangle, AlertCircle, CheckCircle2, ClipboardList, Calendar, Archive, Info } from 'lucide-react';
+import { useFacility } from '../contexts/FacilityContext';
+import { Search, AlertTriangle, AlertCircle, CheckCircle2, ClipboardList, Calendar, Archive, Info, CalendarCheck } from 'lucide-react';
 import { format, parseISO, endOfMonth } from 'date-fns';
 import { StockAIAssistant } from '../components/StockAIAssistant';
 import { IngredientLossAnalyzer } from '../components/IngredientLossAnalyzer';
@@ -40,7 +40,10 @@ interface OrderType {
 }
 
 const Stock = () => {
+  const { facilityClient } = useFacility();
+  const supabase = facilityClient!;
   const [selectedMonth, setSelectedMonth] = useState<string>(() => format(new Date(), 'yyyy-MM'));
+  const [selectedClosingDate, setSelectedClosingDate] = useState<string>(''); // empty = use end of month
   const [rows, setRows] = useState<IngredientRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -59,6 +62,8 @@ const Stock = () => {
     const parsedDate = parseISO(`${selectedMonth}-01`);
     const monthStart = format(parsedDate, 'yyyy-MM-dd');
     const monthEnd = format(endOfMonth(parsedDate), 'yyyy-MM-dd');
+    // Use closing date if specified, otherwise use end of month
+    const effectiveEndDate = selectedClosingDate || monthEnd;
     const yearMonth = selectedMonth;
 
     // 0. Fetch monthly opening stock for book stock calculation
@@ -102,12 +107,12 @@ const Stock = () => {
       return;
     }
 
-    // 2. Fetch all audits for this month (to calculate cumulative loss)
+    // 2. Fetch all audits for this month up to effectiveEndDate (to calculate cumulative loss)
     const { data: monthlyAudits } = await supabase
       .from('stock_audits')
       .select('ingredient_id, actual_stock, theoretical_stock, audit_date')
       .gte('audit_date', monthStart)
-      .lte('audit_date', monthEnd)
+      .lte('audit_date', effectiveEndDate)
       .order('audit_date', { ascending: false });
 
     // Build map: ingredient_id → { latest_actual, latest_date, cumulative_variance }
@@ -120,11 +125,11 @@ const Stock = () => {
       latest_in_counter: number | null
     }> = {};
 
-    // We also need the very latest audit up to the end of the selected month
+    // We also need the very latest audit up to effectiveEndDate
     const { data: allLatestAudits } = await supabase
       .from('stock_audits')
       .select('ingredient_id, stock_in_store, stock_in_counter, actual_stock, theoretical_stock, audit_date')
-      .lte('audit_date', monthEnd)
+      .lte('audit_date', effectiveEndDate)
       .order('audit_date', { ascending: false })
       .order('created_at', { ascending: false });
 
@@ -156,12 +161,12 @@ const Stock = () => {
       });
     }
 
-    // 3. Fetch transactions in the selected month
+    // 3. Fetch transactions up to effectiveEndDate
     const { data: recentTx } = await supabase
       .from('stock_transactions')
       .select('ingredient_id, type, quantity, transaction_date, branch_id, ingredients(name)')
       .gte('transaction_date', monthStart)
-      .lte('transaction_date', monthEnd);
+      .lte('transaction_date', effectiveEndDate);
 
     const txSinceMap: Record<string, number> = {};
     const totalTxMap: Record<string, number> = {};
@@ -199,15 +204,33 @@ const Stock = () => {
     // 4. Merge
     const merged: IngredientRow[] = ingData.map((ing: any) => {
       const latest = latestAuditMap[ing.id];
-      const stats = auditStats[ing.id];
+      const stats = auditStats[ing.id]; // monthly audit stats (within effectiveEndDate)
       
       const latestActual = latest ? (latest.actual_stock ?? 0) : null;
       const changeSince = txSinceMap[ing.id] ?? 0;
       const totalTxMonth = totalTxMap[ing.id] ?? 0;
       const openStock = openingMap[ing.id] ?? 0;
       
-      const bookStock = openStock + totalTxMonth;
+      // If a recent audit exists, use its stored theoretical_stock as the
+      // baseline for book stock (authoritative source from the audit module).
+      // Then project forward by adding transactions that happened after that audit.
+      // If no audit: fall back to opening_stock + all month transactions.
+      const bookStock = latest
+        ? (latest.theoretical_stock ?? 0) + changeSince
+        : openStock + totalTxMonth;
+
       const currentActual = latestActual !== null ? latestActual + changeSince : null;
+
+      // "Hao Hụt" = cumulative monthly variance (sum of all audit variances this month)
+      // This matches what IngredientLossAnalyzer shows as "Chênh lệch lũy kế".
+      // If audited this month: use cumulative sum of (actual - theoretical) across all audits.
+      // If not audited this month but has historical audit: use currentActual - bookStock.
+      // If never audited: 0.
+      const monthly_variance = stats
+        ? stats.cumulative_variance // DO NOT add changeSince (transactions are not loss)
+        : currentActual !== null
+          ? currentActual - bookStock
+          : 0;
 
       return {
         id: ing.id,
@@ -218,9 +241,9 @@ const Stock = () => {
         stock_in_store: latest ? latest.stock_in_store : null,
         stock_in_counter: latest ? latest.stock_in_counter : null,
         actual_stock: latestActual,
-        theoretical_stock: bookStock, // This is now the true monthly book stock
+        theoretical_stock: bookStock,
         audit_date: latest ? latest.audit_date : null,
-        monthly_variance: stats ? stats.cumulative_variance : 0,
+        monthly_variance,
         current_actual: currentActual,
         order_type_id: ing.order_type_id
       };
@@ -232,14 +255,14 @@ const Stock = () => {
     ) as string[];
     setCategories(cats);
 
-    // Fetch total revenue in selected month from SALES_USAGE metadata transactions
+    // Fetch total revenue up to effectiveEndDate from SALES_USAGE metadata transactions
     const { data: revenueData } = await supabase
       .from('stock_transactions')
       .select('notes')
       .eq('type', 'SALES_USAGE')
       .is('ingredient_id', null)
       .gte('transaction_date', monthStart)
-      .lte('transaction_date', monthEnd);
+      .lte('transaction_date', effectiveEndDate);
     
     let revSum = 0;
     if (revenueData) {
@@ -254,13 +277,13 @@ const Stock = () => {
     }
     setTotalRevenue(revSum);
 
-    // Fetch actual waste cost in selected month by joining WASTE transactions with ingredients to get unit_price
+    // Fetch actual waste cost up to effectiveEndDate by joining WASTE transactions with ingredients to get unit_price
     const { data: wasteTx } = await supabase
       .from('stock_transactions')
       .select('quantity, ingredients(unit_price)')
       .eq('type', 'WASTE')
       .gte('transaction_date', monthStart)
-      .lte('transaction_date', monthEnd);
+      .lte('transaction_date', effectiveEndDate);
     
     let wasteSum = 0;
     if (wasteTx) {
@@ -278,7 +301,7 @@ const Stock = () => {
 
   useEffect(() => {
     fetchStock();
-  }, [selectedMonth]);
+  }, [selectedMonth, selectedClosingDate]);
 
   const getStatus = (current: number | null, min: number | null) => {
     if (current === null) return { label: 'Chưa kiểm kê', color: 'text-gray-500 bg-gray-100', icon: ClipboardList };
@@ -299,6 +322,13 @@ const Stock = () => {
   const outOfStock = audited.filter(r => (r.current_actual ?? 0) <= 0);
   const lowStock = audited.filter(r => (r.current_actual ?? 0) > 0 && (r.current_actual ?? 0) <= (r.min_stock ?? 0));
 
+  // Calculate closing date constraints for the date picker
+  const closingDateMin = selectedMonth ? `${selectedMonth}-01` : undefined;
+  const closingDateMax = selectedMonth ? format(endOfMonth(parseISO(`${selectedMonth}-01`)), 'yyyy-MM-dd') : undefined;
+  const effectiveClosingLabel = selectedClosingDate
+    ? format(parseISO(selectedClosingDate), 'dd/MM/yyyy')
+    : 'Cuối tháng';
+
   return (
     <div className="container-fluid py-4 pb-10 animate__animated animate__fadeIn">
       {/* HEADER */}
@@ -311,6 +341,9 @@ const Stock = () => {
             <h1 className="h3 fw-black text-gray-800 mb-0 tracking-tight text-uppercase">QUẢN LÝ TỒN KHO</h1>
             <p className="text-gray-400 small mb-0 font-bold uppercase tracking-widest mt-1">
               Số liệu hiển thị dựa trên <span className="text-teal-600">phiếu kiểm kê gần nhất</span>
+              {selectedClosingDate && (
+                <span className="ms-2 text-amber-600 font-black">• Chốt tồn đến <span className="underline underline-offset-2">{effectiveClosingLabel}</span></span>
+              )}
             </p>
           </div>
         </div>
@@ -437,11 +470,44 @@ const Stock = () => {
                 <input
                   type="month"
                   value={selectedMonth}
-                  onChange={(e) => setSelectedMonth(e.target.value)}
+                  onChange={(e) => { setSelectedMonth(e.target.value); setSelectedClosingDate(''); }}
                   className="w-full pl-11 pr-4 py-3 bg-gray-50 border-0 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-teal-500/20 focus:bg-white transition-all outline-none"
                 />
                 <Calendar className="absolute left-4 top-3.5 text-gray-400" size={18} />
              </div>
+          </div>
+          <div className="col-12 col-sm-6 col-lg-3">
+            <div className="relative">
+              <input
+                type="date"
+                value={selectedClosingDate}
+                min={closingDateMin}
+                max={closingDateMax}
+                onChange={(e) => setSelectedClosingDate(e.target.value)}
+                className={`w-full pl-11 pr-4 py-3 border-0 rounded-2xl text-sm font-bold focus:ring-2 focus:bg-white transition-all outline-none ${
+                  selectedClosingDate
+                    ? 'bg-amber-50 text-amber-700 focus:ring-amber-500/20'
+                    : 'bg-gray-50 text-gray-500 focus:ring-teal-500/20'
+                }`}
+                placeholder="Ngày chốt tồn..."
+              />
+              <CalendarCheck className={`absolute left-4 top-3.5 ${selectedClosingDate ? 'text-amber-500' : 'text-gray-400'}`} size={18} />
+              {selectedClosingDate && (
+                <button
+                  onClick={() => setSelectedClosingDate('')}
+                  className="absolute right-3 top-3 text-amber-400 hover:text-amber-600 font-black text-xs px-1 py-0.5 rounded hover:bg-amber-100 transition-all"
+                  title="Xóa ngày chốt tồn"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+            {!selectedClosingDate && (
+              <p className="text-[9px] text-gray-400 font-black uppercase tracking-wider mt-1.5 ms-1">Ngày chốt tồn (mặc định: cuối tháng)</p>
+            )}
+            {selectedClosingDate && (
+              <p className="text-[9px] text-amber-500 font-black uppercase tracking-wider mt-1.5 ms-1">⚡ Chốt tồn đến {effectiveClosingLabel}</p>
+            )}
           </div>
           <div className="col-12 col-sm-6 col-lg-3">
              <div className="relative">
@@ -583,6 +649,7 @@ const Stock = () => {
           ingredientName={selectedIngredient.name}
           unit={selectedIngredient.unit}
           selectedMonth={selectedMonth}
+          selectedClosingDate={selectedClosingDate}
           onClose={() => setSelectedIngredient(null)}
         />
       )}

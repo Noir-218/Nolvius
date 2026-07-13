@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
+import { useFacility } from '../contexts/FacilityContext';
 import { ShoppingCart, AlertTriangle, TrendingDown, CheckCircle } from 'lucide-react';
 
 import { useAuth } from '../contexts/AuthContext';
@@ -15,6 +15,7 @@ interface PurchasingItem {
 
 export default function Dashboard() {
   useAuth();
+  const { facilityClient: supabase } = useFacility();
   
   const [items, setItems] = useState<PurchasingItem[]>([]);
   const [loading, setLoading] = useState(true);

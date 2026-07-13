@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../../lib/supabase';
+import { useFacility } from '../../contexts/FacilityContext';
 import { Plus, Edit2, Trash2, Search } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import type { Database } from '../../types/database.types';
@@ -7,6 +7,7 @@ import type { Database } from '../../types/database.types';
 type Category = Database['public']['Tables']['product_categories']['Row'];
 
 export const CategoriesTab = () => {
+  const { facilityClient: supabase } = useFacility();
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');

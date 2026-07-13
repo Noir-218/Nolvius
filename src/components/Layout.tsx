@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Outlet, Navigate, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useFacility } from '../contexts/FacilityContext';
 import {
   LogOut,
   Home,
@@ -16,7 +17,10 @@ import {
   Menu,
   X,
   Users as UsersIcon,
-  Sparkles
+  Sparkles,
+  CalendarDays,
+  Building,
+  RefreshCw
 } from 'lucide-react';
 import { LoungeBubble } from './LoungeBubble';
 
@@ -33,11 +37,13 @@ const navItems = [
   { path: '/forecast', label: 'Dự Đoán Nhập Hàng', icon: Calculator, roles: ['master', 'SM', 'SS', 'MB'] },
   { path: '/expenses', label: 'Quản Lý Thu Chi', icon: Home, roles: ['master'] },
   { path: '/users', label: 'Quản Trị Người Dùng', icon: UsersIcon, roles: ['master'] },
+  { path: '/scheduling', label: 'Xếp Lịch Làm Việc', icon: CalendarDays, roles: ['master', 'SM', 'MB'] },
 
 ];
 
 const Layout = () => {
   const { session, user, role, fullName, avatarUrl, loading, signOut } = useAuth();
+  const { currentFacility, facilities, clearFacility } = useFacility();
   const navigate = useNavigate();
   const location = useLocation();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -108,7 +114,12 @@ const Layout = () => {
     return <Navigate to="/login" replace />;
   }
 
+  if (!currentFacility) {
+    return <Navigate to="/select-facility" replace />;
+  }
+
   const handleLogout = async () => {
+    clearFacility();
     await signOut();
     navigate('/login');
   };
@@ -244,6 +255,25 @@ const Layout = () => {
           </div>
 
           <div className="flex items-center gap-3">
+            {/* Facility Indicator / Switcher */}
+            {currentFacility && (
+              <div className="flex items-center gap-2 bg-teal-50 border border-teal-100 px-3 py-1.5 rounded-xl premium-shadow">
+                <Building size={16} className="text-teal-600 shrink-0" />
+                <span className="text-xs font-black text-teal-800 uppercase tracking-wide truncate max-w-[120px] sm:max-w-[200px]">
+                  {currentFacility.name}
+                </span>
+                {(facilities.length > 1 || role === 'master') && (
+                  <button
+                    onClick={() => navigate('/select-facility')}
+                    className="p-1 hover:bg-teal-100 rounded-lg text-teal-600 transition-colors border-0 bg-transparent flex items-center justify-center"
+                    title="Đổi cơ sở hoạt động"
+                  >
+                    <RefreshCw size={12} className="animate-hover" />
+                  </button>
+                )}
+              </div>
+            )}
+
             <button
               onClick={() => setIsLoungeOpen(!isLoungeOpen)}
               className={`w-10 h-10 flex items-center justify-center rounded-2xl border cursor-pointer transition-all premium-shadow group ${isLoungeOpen

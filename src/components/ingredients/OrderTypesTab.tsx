@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../../lib/supabase';
+import { useFacility } from '../../contexts/FacilityContext';
 import { Plus, Edit2, Trash2, Search } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 
@@ -11,6 +11,7 @@ interface OrderType {
 }
 
 export const OrderTypesTab = () => {
+  const { facilityClient: supabase } = useFacility();
   const [orderTypes, setOrderTypes] = useState<OrderType[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');

@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
-import { Shield, UserX, Search, Mail, Edit3, Check, X, Database, Trash2, Calendar, AlertTriangle } from 'lucide-react';
+import { supabase } from '../lib/supabase'; // Master DB
+import { Search, Mail, Edit3, Check, X, Database, Trash2, Calendar, AlertTriangle, Plus, Landmark, CheckSquare, Square } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { Navigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
 
 interface Profile {
   id: string;
@@ -13,20 +14,51 @@ interface Profile {
   created_at: string | null;
 }
 
+interface Facility {
+  id: string;
+  name: string;
+  address: string | null;
+  supabase_url: string;
+  supabase_anon_key: string;
+  google_script_url?: string | null;
+  created_at?: string;
+}
+
+interface UserFacility {
+  user_id: string;
+  facility_id: string;
+}
+
 export default function Users() {
   const { role: currentUserRole } = useAuth();
   const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [facilities, setFacilities] = useState<Facility[]>([]);
+  const [userFacilities, setUserFacilities] = useState<UserFacility[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [activeTab, setActiveTab] = useState<'users' | 'maintenance'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'facilities' | 'maintenance'>('users');
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [tempName, setTempName] = useState('');
   
   // Details Modal
   const [selectedUser, setSelectedUser] = useState<Profile | null>(null);
-  const [isResetMode, setIsResetMode] = useState(false);
-  const [newPassword, setNewPassword] = useState('');
   
+  // Facility Form Modal
+  const [isFacilityModalOpen, setIsFacilityModalOpen] = useState(false);
+  const [editingFacilityId, setEditingFacilityId] = useState<string | null>(null);
+  const [facilityForm, setFacilityForm] = useState({
+    name: '',
+    address: '',
+    supabase_url: '',
+    supabase_anon_key: '',
+    google_script_url: '',
+  });
+
+  // User Facility Mapping Modal
+  const [isMappingModalOpen, setIsMappingModalOpen] = useState(false);
+  const [mappingUser, setMappingUser] = useState<Profile | null>(null);
+  const [selectedFacilityIds, setSelectedFacilityIds] = useState<string[]>([]);
+
   // Maintenance State
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -40,23 +72,27 @@ export default function Users() {
   const [startMonth, setStartMonth] = useState('');
   const [endMonth, setEndMonth] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
-  
 
-  const fetchProfiles = async () => {
+  const fetchData = async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .order('created_at', { ascending: false });
-    
-    if (!error && data) {
-      setProfiles(data as unknown as Profile[]);
+    try {
+      const [profilesRes, facilitiesRes, mappingRes] = await Promise.all([
+        supabase.from('profiles').select('*').order('created_at', { ascending: false }),
+        supabase.from('facilities' as any).select('*').order('created_at', { ascending: false }),
+        supabase.from('user_facilities' as any).select('*')
+      ]);
+
+      if (profilesRes.data) setProfiles(profilesRes.data as unknown as Profile[]);
+      if (facilitiesRes.data) setFacilities(facilitiesRes.data as unknown as Facility[]);
+      if (mappingRes.data) setUserFacilities(mappingRes.data as unknown as UserFacility[]);
+    } catch (e: any) {
+      toast.error('Lỗi tải dữ liệu: ' + e.message);
     }
     setLoading(false);
   };
 
   useEffect(() => {
-    fetchProfiles();
+    fetchData();
   }, []);
 
   if (currentUserRole !== 'master') {
@@ -70,9 +106,10 @@ export default function Users() {
       .eq('id', userId);
     
     if (error) {
-      alert('Lỗi cập nhật role: ' + error.message);
+      toast.error('Lỗi cập nhật role: ' + error.message);
     } else {
-      fetchProfiles();
+      toast.success('Cập nhật quyền thành công');
+      fetchData();
     }
   };
 
@@ -85,10 +122,132 @@ export default function Users() {
       .eq('id', userId);
     
     if (error) {
-      alert('Lỗi cập nhật tên: ' + error.message);
+      toast.error('Lỗi cập nhật tên: ' + error.message);
     } else {
       setEditingUserId(null);
-      fetchProfiles();
+      toast.success('Cập nhật tên thành công');
+      fetchData();
+    }
+  };
+
+  // Facility Management CRUD
+  const handleOpenFacilityModal = (fac?: Facility) => {
+    if (fac) {
+      setEditingFacilityId(fac.id);
+      setFacilityForm({
+        name: fac.name,
+        address: fac.address || '',
+        supabase_url: fac.supabase_url,
+        supabase_anon_key: fac.supabase_anon_key,
+        google_script_url: fac.google_script_url || '',
+      });
+    } else {
+      setEditingFacilityId(null);
+      setFacilityForm({
+        name: '',
+        address: '',
+        supabase_url: '',
+        supabase_anon_key: '',
+        google_script_url: '',
+      });
+    }
+    setIsFacilityModalOpen(true);
+  };
+
+  const handleSaveFacility = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!facilityForm.name || !facilityForm.supabase_url || !facilityForm.supabase_anon_key) {
+      toast.error('Vui lòng điền đầy đủ các thông tin bắt buộc!');
+      return;
+    }
+
+    try {
+      if (editingFacilityId) {
+        const { error } = await supabase
+          .from('facilities' as any)
+          .update({
+            name: facilityForm.name,
+            address: facilityForm.address || null,
+            supabase_url: facilityForm.supabase_url,
+            supabase_anon_key: facilityForm.supabase_anon_key,
+            google_script_url: facilityForm.google_script_url || null,
+          })
+          .eq('id', editingFacilityId);
+
+        if (error) throw error;
+        toast.success('Cập nhật cơ sở thành công!');
+      } else {
+        const { error } = await supabase
+          .from('facilities' as any)
+          .insert({
+            name: facilityForm.name,
+            address: facilityForm.address || null,
+            supabase_url: facilityForm.supabase_url,
+            supabase_anon_key: facilityForm.supabase_anon_key,
+            google_script_url: facilityForm.google_script_url || null,
+          });
+
+        if (error) throw error;
+        toast.success('Thêm cơ sở mới thành công!');
+      }
+      setIsFacilityModalOpen(false);
+      fetchData();
+    } catch (err: any) {
+      toast.error('Lỗi: ' + err.message);
+    }
+  };
+
+  const handleDeleteFacility = async (id: string) => {
+    if (!confirm('Bạn có chắc chắn muốn xóa cơ sở này? Tài khoản được gán quyền cơ sở này sẽ mất liên kết.')) return;
+    try {
+      const { error } = await supabase.from('facilities' as any).delete().eq('id', id);
+      if (error) throw error;
+      toast.success('Xóa cơ sở thành công!');
+      fetchData();
+    } catch (err: any) {
+      toast.error('Lỗi khi xóa: ' + err.message);
+    }
+  };
+
+  // Facility Mapping Management
+  const handleOpenMappingModal = (user: Profile) => {
+    setMappingUser(user);
+    const assignedIds = userFacilities
+      .filter(uf => uf.user_id === user.id)
+      .map(uf => uf.facility_id);
+    setSelectedFacilityIds(assignedIds);
+    setIsMappingModalOpen(true);
+  };
+
+  const handleToggleFacilityAssignment = (facilityId: string) => {
+    setSelectedFacilityIds(prev => 
+      prev.includes(facilityId)
+        ? prev.filter(id => id !== facilityId)
+        : [...prev, facilityId]
+    );
+  };
+
+  const handleSaveMapping = async () => {
+    if (!mappingUser) return;
+    try {
+      // Xóa liên kết cũ của user này
+      await supabase.from('user_facilities' as any).delete().eq('user_id', mappingUser.id);
+      
+      // Thêm liên kết mới
+      if (selectedFacilityIds.length > 0) {
+        const inserts = selectedFacilityIds.map(fid => ({
+          user_id: mappingUser.id,
+          facility_id: fid
+        }));
+        const { error } = await supabase.from('user_facilities' as any).insert(inserts);
+        if (error) throw error;
+      }
+      
+      toast.success(`Đã cập nhật phân quyền cơ sở cho ${mappingUser.full_name || mappingUser.email}`);
+      setIsMappingModalOpen(false);
+      fetchData();
+    } catch (err: any) {
+      toast.error('Lỗi phân quyền: ' + err.message);
     }
   };
 
@@ -184,7 +343,6 @@ export default function Users() {
           .lte('sale_date', endDate);
         
         // 2. Delete from stock_transactions table (SALES_USAGE types only)
-        // If the user also chose to delete ALL transactions, this is redundant but safe.
         const { error: txErr } = await supabase
           .from('stock_transactions')
           .delete()
@@ -215,21 +373,7 @@ export default function Users() {
     }
   };
 
-  const handleResetPassword = async () => {
-    if (!newPassword || newPassword.length < 6) {
-      alert('Mật khẩu phải ít nhất 6 ký tự!');
-      return;
-    }
-    
-    // In a real production app with Supabase, you'd call a service-role Edge Function
-    // Since we are on client-side, we can only update the CURRENT logged in user's password.
-    // For admin to change OTHERs, they'd usually go through Supabase Dashboard or an Admin API.
-    alert(`Thông báo bảo mật:
-Để đổi mật khẩu cho nhân viên [${selectedUser?.email}], Master vui lòng thực hiện trên Supabase Dashboard (Cài đặt Auth > Users) hoặc hướng dẫn nhân viên sử dụng tính năng "Quên mật khẩu".
-Hệ thống hiện tại không lưu mật khẩu ở dạng văn bản để bảo vệ an toàn cho nhân viên.`);
-    setIsResetMode(false);
-    setNewPassword('');
-  };
+
 
   const filteredProfiles = profiles.filter(p => 
     p.email?.toLowerCase().includes(search.toLowerCase()) || 
@@ -241,7 +385,7 @@ Hệ thống hiện tại không lưu mật khẩu ở dạng văn bản để b
       <div className="row g-3 align-items-center mb-4">
         <div className="col-12 col-md-auto me-auto">
           <h1 className="h3 fw-black text-dark mb-1">QUẢN TRỊ HỆ THỐNG</h1>
-          <p className="text-secondary small mb-0">Quản lý người dùng và bảo trì dữ liệu hệ thống.</p>
+          <p className="text-secondary small mb-0">Quản lý người dùng, phân chia cơ sở và bảo trì dữ liệu.</p>
         </div>
       </div>
 
@@ -258,6 +402,14 @@ Hệ thống hiện tại không lưu mật khẩu ở dạng văn bản để b
             </li>
             <li className="nav-item">
               <button
+                onClick={() => setActiveTab('facilities')}
+                className={`nav-link rounded-pill fw-bold small transition-all py-2 ${activeTab === 'facilities' ? 'active shadow-sm' : 'text-secondary hover-bg-light'}`}
+              >
+                Quản lý cơ sở
+              </button>
+            </li>
+            <li className="nav-item">
+              <button
                 onClick={() => setActiveTab('maintenance')}
                 className={`nav-link rounded-pill fw-bold small transition-all py-2 ${activeTab === 'maintenance' ? 'active shadow-sm' : 'text-secondary hover-bg-light'}`}
               >
@@ -268,7 +420,7 @@ Hệ thống hiện tại không lưu mật khẩu ở dạng văn bản để b
         </div>
 
         <div className="card-body p-4">
-          {activeTab === 'users' ? (
+          {activeTab === 'users' && (
             <>
               <div className="row g-3 mb-4">
                 <div className="col-12">
@@ -293,106 +445,125 @@ Hệ thống hiện tại không lưu mật khẩu ở dạng văn bản để b
                       <th className="px-4 py-3 border-0 small fw-black tracking-widest text-uppercase text-secondary">Người dùng</th>
                       <th className="px-4 py-3 border-0 small fw-black tracking-widest text-uppercase text-secondary">Email</th>
                       <th className="px-4 py-3 border-0 small fw-black tracking-widest text-uppercase text-secondary">Quyền hạn</th>
+                      <th className="px-4 py-3 border-0 small fw-black tracking-widest text-uppercase text-secondary">Cơ sở được gán</th>
                       <th className="px-4 py-3 border-0 small fw-black tracking-widest text-uppercase text-secondary text-end">Thao tác</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white">
                     {loading ? (
-                      <tr><td colSpan={4} className="px-4 py-5 text-center text-muted">Đang tải...</td></tr>
+                      <tr><td colSpan={5} className="px-4 py-5 text-center text-muted">Đang tải...</td></tr>
                     ) : filteredProfiles.length === 0 ? (
-                      <tr><td colSpan={4} className="px-4 py-5 text-center text-muted italic">Không có người dùng nào.</td></tr>
+                      <tr><td colSpan={5} className="px-4 py-5 text-center text-muted italic">Không có người dùng nào.</td></tr>
                     ) : (
-                      filteredProfiles.map(p => (
-                        <tr key={p.id}>
-                          <td className="px-4 py-3">
-                            <div className="d-flex align-items-center gap-3">
-                              <div className="w-10 h-10 rounded-full bg-light text-primary d-flex align-items-center justify-content-center fw-bold border overflow-hidden">
-                                {p.avatar_url ? (
-                                  <img src={p.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
-                                ) : (
-                                  (p.full_name || p.email || 'U').charAt(0).toUpperCase()
-                                )}
+                      filteredProfiles.map(p => {
+                        const userAssignedFacilities = userFacilities
+                          .filter(uf => uf.user_id === p.id)
+                          .map(uf => facilities.find(f => f.id === uf.facility_id)?.name)
+                          .filter(Boolean);
+
+                        return (
+                          <tr key={p.id}>
+                            <td className="px-4 py-3">
+                              <div className="d-flex align-items-center gap-3">
+                                <div className="w-10 h-10 rounded-full bg-light text-primary d-flex align-items-center justify-content-center fw-bold border overflow-hidden">
+                                  {p.avatar_url ? (
+                                    <img src={p.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
+                                  ) : (
+                                    (p.full_name || p.email || 'U').charAt(0).toUpperCase()
+                                  )}
+                                </div>
+                                <div>
+                                  {editingUserId === p.id ? (
+                                    <div className="d-flex align-items-center gap-1">
+                                      <input 
+                                        type="text" 
+                                        value={tempName} 
+                                        onChange={e => setTempName(e.target.value)}
+                                        className="form-control form-control-sm border-primary fw-bold"
+                                        autoFocus
+                                        onKeyDown={e => {
+                                          if (e.key === 'Enter') handleUpdateName(p.id);
+                                          if (e.key === 'Escape') setEditingUserId(null);
+                                        }}
+                                      />
+                                      <button onClick={() => handleUpdateName(p.id)} className="btn btn-sm btn-success p-1 rounded-circle shadow-sm"><Check size={14} /></button>
+                                      <button onClick={() => setEditingUserId(null)} className="btn btn-sm btn-light p-1 rounded-circle shadow-sm"><X size={14} /></button>
+                                    </div>
+                                  ) : (
+                                    <div className="d-flex align-items-center gap-2">
+                                      <div className="fw-bold text-dark">{p.full_name || 'Chưa đặt tên'}</div>
+                                      <button 
+                                        onClick={() => { setEditingUserId(p.id); setTempName(p.full_name || ''); }}
+                                        className="btn btn-link p-0 text-muted hover-text-primary"
+                                      >
+                                        <Edit3 size={14} />
+                                      </button>
+                                    </div>
+                                  )}
+                                  <div className="text-muted small" style={{fontSize: '11px'}}>{p.id}</div>
+                                </div>
                               </div>
-                              <div>
-                                {editingUserId === p.id ? (
-                                  <div className="d-flex align-items-center gap-1">
-                                    <input 
-                                      type="text" 
-                                      value={tempName} 
-                                      onChange={e => setTempName(e.target.value)}
-                                      className="form-control form-control-sm border-primary fw-bold"
-                                      autoFocus
-                                      onKeyDown={e => {
-                                        if (e.key === 'Enter') handleUpdateName(p.id);
-                                        if (e.key === 'Escape') setEditingUserId(null);
-                                      }}
-                                    />
-                                    <button onClick={() => handleUpdateName(p.id)} className="btn btn-sm btn-success p-1 rounded-circle shadow-sm"><Check size={14} /></button>
-                                    <button onClick={() => setEditingUserId(null)} className="btn btn-sm btn-light p-1 rounded-circle shadow-sm"><X size={14} /></button>
-                                  </div>
-                                ) : (
-                                  <div className="d-flex align-items-center gap-2">
-                                    <div className="fw-bold text-dark">{p.full_name || 'Chưa đặt tên'}</div>
-                                    <button 
-                                      onClick={() => { setEditingUserId(p.id); setTempName(p.full_name || ''); }}
-                                      className="btn btn-link p-0 text-muted hover-text-primary"
-                                    >
-                                      <Edit3 size={14} />
-                                    </button>
-                                  </div>
-                                )}
-                                <div className="text-muted small" style={{fontSize: '11px'}}>{p.id}</div>
+                            </td>
+                            <td className="px-4 py-3 text-secondary">
+                              <div className="d-flex align-items-center gap-2">
+                                <Mail size={14} className="opacity-50" />
+                                {p.email}
                               </div>
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 text-secondary">
-                            <div className="d-flex align-items-center gap-2">
-                              <Mail size={14} className="opacity-50" />
-                              {p.email}
-                            </div>
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="d-flex align-items-center gap-2">
-                              <select 
-                                value={p.role || 'staff'} 
-                                onChange={e => handleUpdateRole(p.id, e.target.value)}
-                                className={`form-select form-select-sm fw-bold rounded-pill px-3 py-1 ${
-                                  p.role === 'master' ? 'bg-danger-subtle text-danger border-danger' :
-                                  p.role === 'SM' ? 'bg-warning-subtle text-warning-emphasis border-warning' :
-                                  p.role === 'SS' ? 'bg-info-subtle text-info-emphasis border-info' :
-                                  p.role === 'MB' ? 'bg-success-subtle text-success border-success' :
-                                  'bg-light text-secondary border-secondary'
-                                }`}
-                                style={{ width: 'fit-content' }}
-                              >
-                                <option value="master">Master</option>
-                                <option value="SM">SM</option>
-                                <option value="SS">SS</option>
-                                <option value="MB">MB</option>
-                                <option value="staff">Staff</option>
-                              </select>
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 text-end">
-                            <div className="d-flex justify-content-end gap-2">
-                              <button 
-                                onClick={() => setSelectedUser(p)}
-                                className="btn btn-outline-primary btn-sm rounded-circle p-2 border-0 hover-bg-primary-subtle"
-                                title="Xem chi tiết"
-                              >
-                                <Database size={18} />
-                              </button>
-                              <button 
-                                className="btn btn-outline-danger btn-sm rounded-circle p-2 border-0 hover-bg-danger-subtle"
-                                title="Vô hiệu hóa tài khoản"
-                                onClick={() => alert('Chức năng xóa người dùng yêu cầu thao tác trong Supabase Auth Dashboard.')}
-                              >
-                                <UserX size={18} />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="d-flex align-items-center gap-2">
+                                <select 
+                                  value={p.role || 'staff'} 
+                                  onChange={e => handleUpdateRole(p.id, e.target.value)}
+                                  className={`form-select form-select-sm fw-bold rounded-pill px-3 py-1 ${
+                                    p.role === 'master' ? 'bg-danger-subtle text-danger border-danger' :
+                                    p.role === 'SM' ? 'bg-warning-subtle text-warning-emphasis border-warning' :
+                                    p.role === 'SS' ? 'bg-info-subtle text-info-emphasis border-info' :
+                                    p.role === 'MB' ? 'bg-success-subtle text-success border-success' :
+                                    'bg-light text-secondary border-secondary'
+                                  }`}
+                                  style={{ width: 'fit-content' }}
+                                >
+                                  <option value="master">Master</option>
+                                  <option value="SM">SM</option>
+                                  <option value="SS">SS</option>
+                                  <option value="MB">MB</option>
+                                  <option value="staff">Staff</option>
+                                </select>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              {userAssignedFacilities.length === 0 ? (
+                                <span className="text-muted italic small">Chưa gán cơ sở</span>
+                              ) : (
+                                <div className="d-flex flex-wrap gap-1">
+                                  {userAssignedFacilities.map((name, i) => (
+                                    <span key={i} className="badge bg-secondary rounded-pill">{name}</span>
+                                  ))}
+                                </div>
+                              )}
+                            </td>
+                            <td className="px-4 py-3 text-end">
+                              <div className="d-flex justify-content-end gap-2">
+                                <button 
+                                  onClick={() => handleOpenMappingModal(p)}
+                                  className="btn btn-outline-info btn-sm rounded-circle p-2 border-0 hover-bg-info-subtle"
+                                  title="Phân quyền cơ sở"
+                                >
+                                  <Landmark size={18} />
+                                </button>
+                                <button 
+                                  onClick={() => setSelectedUser(p)}
+                                  className="btn btn-outline-primary btn-sm rounded-circle p-2 border-0 hover-bg-primary-subtle"
+                                  title="Xem chi tiết"
+                                >
+                                  <Database size={18} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
                     )}
                   </tbody>
                 </table>
@@ -407,7 +578,7 @@ Hệ thống hiện tại không lưu mật khẩu ở dạng văn bản để b
                         <h5 className="modal-title fw-black small text-uppercase tracking-widest">
                           Thông tin chi tiết tài khoản
                         </h5>
-                        <button type="button" className="btn-close btn-close-white" onClick={() => { setSelectedUser(null); setIsResetMode(false); }}></button>
+                        <button type="button" className="btn-close btn-close-white" onClick={() => { setSelectedUser(null); }}></button>
                       </div>
                       <div className="modal-body p-4">
                         <div className="text-center mb-4">
@@ -439,33 +610,6 @@ Hệ thống hiện tại không lưu mật khẩu ở dạng văn bản để b
                             <label className="small fw-black text-muted text-uppercase tracking-tighter d-block mb-1">Ngày tham gia</label>
                             <div className="fw-bold text-dark">{selectedUser.created_at ? new Date(selectedUser.created_at).toLocaleString('vi-VN') : '---'}</div>
                           </div>
-
-                          <div className="p-3 bg-danger bg-opacity-10 rounded-3 border border-danger border-opacity-25">
-                            <label className="small fw-black text-danger text-uppercase tracking-tighter d-block mb-2">Quản lý Mật khẩu</label>
-                            {isResetMode ? (
-                              <div className="d-flex gap-2">
-                                <input 
-                                  type="text" 
-                                  placeholder="Nhập mật khẩu mới..." 
-                                  className="form-control form-control-sm"
-                                  value={newPassword}
-                                  onChange={e => setNewPassword(e.target.value)}
-                                />
-                                <button onClick={() => handleResetPassword()} className="btn btn-sm btn-danger px-3">Lưu</button>
-                                <button onClick={() => setIsResetMode(false)} className="btn btn-sm btn-light border px-2">Hủy</button>
-                              </div>
-                            ) : (
-                              <div className="d-flex align-items-center justify-content-between">
-                                <div className="text-muted font-monospace">**********</div>
-                                <button 
-                                  onClick={() => setIsResetMode(true)}
-                                  className="btn btn-sm btn-link text-danger fw-bold p-0 text-decoration-none"
-                                >
-                                  Cấp lại mật khẩu
-                                </button>
-                              </div>
-                            )}
-                          </div>
                         </div>
                       </div>
                       <div className="modal-footer border-0 p-4 pt-0">
@@ -475,18 +619,204 @@ Hệ thống hiện tại không lưu mật khẩu ở dạng văn bản để b
                   </div>
                 </div>
               )}
-              
-              <div className="mt-4 p-3 bg-light rounded-4 border-start border-4 border-info">
-                <h6 className="fw-bold text-info flex align-items-center gap-2">
-                  <Shield size={18} /> Lưu ý cho Master
-                </h6>
-                <p className="small text-secondary mb-0">
-                  Việc tạo tài khoản mới (Sign Up) nên được thực hiện qua trang Đăng ký hoặc Supabase Dashboard. 
-                  Sau khi người dùng đăng ký, bạn có thể phân quyền (Role) cho họ tại bảng này.
-                </p>
-              </div>
+
+              {/* MAPPING FACILITY MODAL */}
+              {isMappingModalOpen && mappingUser && (
+                <div className="modal fade show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+                  <div className="modal-dialog modal-dialog-centered">
+                    <div className="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
+                      <div className="modal-header bg-dark text-white border-0 py-3">
+                        <h5 className="modal-title fw-black small text-uppercase tracking-widest">
+                          Phân quyền cơ sở cho tài khoản
+                        </h5>
+                        <button type="button" className="btn-close btn-close-white" onClick={() => setIsMappingModalOpen(false)}></button>
+                      </div>
+                      <div className="modal-body p-4">
+                        <div className="mb-3">
+                          <span className="small text-muted d-block">Tài khoản:</span>
+                          <strong className="text-dark">{mappingUser.full_name || 'Chưa đặt tên'} ({mappingUser.email})</strong>
+                        </div>
+                        <label className="small fw-black text-muted text-uppercase tracking-tighter d-block mb-2">Chọn các cơ sở được phép truy cập:</label>
+                        
+                        {facilities.length === 0 ? (
+                          <div className="text-center text-muted p-4 border rounded-3 bg-light">
+                            Chưa có cơ sở nào được tạo. Vui lòng tạo cơ sở trước ở tab "Quản lý cơ sở".
+                          </div>
+                        ) : (
+                          <div className="d-flex flex-column gap-2" style={{ maxHeight: '250px', overflowY: 'auto' }}>
+                            {facilities.map(fac => {
+                              const isChecked = selectedFacilityIds.includes(fac.id);
+                              return (
+                                <div 
+                                  key={fac.id}
+                                  onClick={() => handleToggleFacilityAssignment(fac.id)}
+                                  className={`d-flex align-items-center justify-content-between p-3 rounded-3 border cursor-pointer transition-all ${
+                                    isChecked ? 'bg-primary-subtle border-primary text-primary-emphasis fw-bold' : 'bg-white'
+                                  }`}
+                                >
+                                  <div>
+                                    <div style={{ fontSize: '14px' }}>{fac.name}</div>
+                                    <div className="text-secondary small fw-normal" style={{ fontSize: '11px' }}>{fac.address || 'Không có địa chỉ'}</div>
+                                  </div>
+                                  <div>
+                                    {isChecked ? <CheckSquare size={20} className="text-primary" /> : <Square size={20} className="text-secondary" />}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                      <div className="modal-footer border-0 p-4 pt-0 d-flex gap-2">
+                        <button type="button" className="btn btn-light rounded-pill flex-grow-1 py-2 fw-bold" onClick={() => setIsMappingModalOpen(false)}>Hủy</button>
+                        <button type="button" className="btn btn-primary rounded-pill flex-grow-1 py-2 fw-bold" onClick={handleSaveMapping}>Lưu phân quyền</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </>
-          ) : (
+          )}
+
+          {activeTab === 'facilities' && (
+            <div className="py-2">
+              <div className="d-flex justify-content-between align-items-center mb-4">
+                <h5 className="fw-black text-dark text-uppercase mb-0">Danh sách các cơ sở vận hành</h5>
+                <button 
+                  onClick={() => handleOpenFacilityModal()}
+                  className="btn btn-primary d-flex align-items-center gap-2 rounded-pill fw-bold shadow-sm"
+                >
+                  <Plus size={18} /> Thêm Cơ Sở Mới
+                </button>
+              </div>
+
+              <div className="table-responsive rounded-4 border">
+                <table className="table table-hover align-middle mb-0" style={{ fontSize: '14px' }}>
+                  <thead className="table-light">
+                    <tr>
+                      <th className="px-4 py-3 border-0 small fw-black tracking-widest text-uppercase text-secondary">Tên cơ sở</th>
+                      <th className="px-4 py-3 border-0 small fw-black tracking-widest text-uppercase text-secondary">Địa chỉ</th>
+                      <th className="px-4 py-3 border-0 small fw-black tracking-widest text-uppercase text-secondary">Supabase URL / Connection</th>
+                      <th className="px-4 py-3 border-0 small fw-black tracking-widest text-uppercase text-secondary text-end">Thao tác</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white">
+                    {loading ? (
+                      <tr><td colSpan={4} className="px-4 py-5 text-center text-muted">Đang tải...</td></tr>
+                    ) : facilities.length === 0 ? (
+                      <tr><td colSpan={4} className="px-4 py-5 text-center text-muted italic">Chưa cấu hình cơ sở nào. Hãy thêm cơ sở để bắt đầu vận hành đa luồng DB.</td></tr>
+                    ) : (
+                      facilities.map(fac => (
+                        <tr key={fac.id}>
+                          <td className="px-4 py-3 fw-bold text-dark">{fac.name}</td>
+                          <td className="px-4 py-3 text-secondary">{fac.address || '—'}</td>
+                          <td className="px-4 py-3 text-secondary small font-monospace">
+                            <div>{fac.supabase_url}</div>
+                            <div className="text-muted" style={{ fontSize: '10px' }}>Anon Key: {fac.supabase_anon_key.substring(0, 15)}...</div>
+                          </td>
+                          <td className="px-4 py-3 text-end">
+                            <div className="d-flex justify-content-end gap-2">
+                              <button 
+                                onClick={() => handleOpenFacilityModal(fac)}
+                                className="btn btn-outline-primary btn-sm rounded-circle p-2 border-0 hover-bg-primary-subtle"
+                                title="Sửa cơ sở"
+                              >
+                                <Edit3 size={18} />
+                              </button>
+                              <button 
+                                onClick={() => handleDeleteFacility(fac.id)}
+                                className="btn btn-outline-danger btn-sm rounded-circle p-2 border-0 hover-bg-danger-subtle"
+                                title="Xóa cơ sở"
+                              >
+                                <Trash2 size={18} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* FACILITY CONFIG FORM MODAL */}
+              {isFacilityModalOpen && (
+                <div className="modal fade show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+                  <div className="modal-dialog modal-dialog-centered modal-md">
+                    <div className="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
+                      <div className="modal-header bg-dark text-white border-0 py-3">
+                        <h5 className="modal-title fw-black small text-uppercase tracking-widest">
+                          {editingFacilityId ? 'Cập nhật cấu hình cơ sở' : 'Thêm cơ sở mới'}
+                        </h5>
+                        <button type="button" className="btn-close btn-close-white" onClick={() => setIsFacilityModalOpen(false)}></button>
+                      </div>
+                      <form onSubmit={handleSaveFacility}>
+                        <div className="modal-body p-4 row g-3">
+                          <div className="col-12">
+                            <label className="form-label small fw-bold text-muted">Tên Cơ Sở (*)</label>
+                            <input 
+                              required type="text"
+                              value={facilityForm.name}
+                              onChange={e => setFacilityForm({ ...facilityForm, name: e.target.value })}
+                              className="form-control"
+                              placeholder="VD: Cửa hàng Quận 1"
+                            />
+                          </div>
+                          <div className="col-12">
+                            <label className="form-label small fw-bold text-muted">Địa chỉ</label>
+                            <input 
+                              type="text"
+                              value={facilityForm.address}
+                              onChange={e => setFacilityForm({ ...facilityForm, address: e.target.value })}
+                              className="form-control"
+                              placeholder="VD: 123 Đường Nguyễn Huệ, Quận 1"
+                            />
+                          </div>
+                          <div className="col-12">
+                            <label className="form-label small fw-bold text-muted">Supabase URL (*)</label>
+                            <input 
+                              required type="text"
+                              value={facilityForm.supabase_url}
+                              onChange={e => setFacilityForm({ ...facilityForm, supabase_url: e.target.value })}
+                              className="form-control font-monospace"
+                              placeholder="VD: https://xyz.supabase.co"
+                            />
+                          </div>
+                          <div className="col-12">
+                            <label className="form-label small fw-bold text-muted">Supabase Anon Key (*)</label>
+                            <textarea 
+                              required
+                              rows={3}
+                              value={facilityForm.supabase_anon_key}
+                              onChange={e => setFacilityForm({ ...facilityForm, supabase_anon_key: e.target.value })}
+                              className="form-control font-monospace"
+                              placeholder="Nhập Supabase Anon Public Key của cơ sở..."
+                            />
+                          </div>
+                          <div className="col-12">
+                            <label className="form-label small fw-bold text-muted">Google Script URL</label>
+                            <input 
+                              type="url"
+                              value={facilityForm.google_script_url}
+                              onChange={e => setFacilityForm({ ...facilityForm, google_script_url: e.target.value })}
+                              className="form-control font-monospace"
+                              placeholder="https://script.google.com/macros/s/.../exec"
+                            />
+                          </div>
+                        </div>
+                        <div className="modal-footer border-0 p-4 pt-0 d-flex gap-2">
+                          <button type="button" className="btn btn-light rounded-pill flex-grow-1 py-2 fw-bold" onClick={() => setIsFacilityModalOpen(false)}>Hủy</button>
+                          <button type="submit" className="btn btn-primary rounded-pill flex-grow-1 py-2 fw-bold">Lưu thông tin</button>
+                        </div>
+                      </form>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'maintenance' && (
             <div className="py-2">
               <div className="row g-4">
                 <div className="col-12 col-lg-5">

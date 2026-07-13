@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
+import { useFacility } from '../contexts/FacilityContext';
 import {
   Calculator, TrendingDown, ShoppingCart,
   Clock, RefreshCw, AlertTriangle, CheckCircle2,
@@ -72,6 +72,8 @@ const SOURCE_LABEL: Record<ConsumptionSource, { text: string; cls: string; tip: 
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function Forecast() {
+  const { facilityClient } = useFacility();
+  const supabase = facilityClient!;
   const [periodDays, setPeriodDays] = useState(7);
   const [data, setData] = useState<ForecastRow[]>([]);
   const [orderTypes, setOrderTypes] = useState<OrderType[]>([]);

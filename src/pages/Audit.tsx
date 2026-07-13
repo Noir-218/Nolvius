@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Tables, TablesInsert, TablesUpdate } from '../types/database.types';
-import { supabase } from '../lib/supabase';
+import { useFacility } from '../contexts/FacilityContext';
 import { Search, Save, History, PackageOpen, ChevronLeft, ChevronRight, AlertCircle, CupSoda, Upload, Download, ClipboardCheck, FileDown, Calculator, X, Eye, EyeOff, AlertTriangle, TrendingDown } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { TeaAndCakeAuditTab } from '../components/audit/TeaAndCakeAuditTab';
@@ -42,6 +42,7 @@ const unsignedString = (str: string) => {
 
 export default function Audit() {
   const { user, role } = useAuth();
+  const { facilityClient: supabase, currentFacility } = useFacility();
   const isStaff = role === 'staff';
   const todayStr = format(new Date(), 'yyyy-MM-dd');
   const [selectedDate, setSelectedDate] = useState<string>(todayStr);
@@ -510,9 +511,9 @@ export default function Audit() {
   };
 
   const syncToGoogleSheet = async (records: any[]) => {
-    const GOOGLE_SCRIPT_URL = import.meta.env.VITE_GOOGLE_SCRIPT_URL;
+    const GOOGLE_SCRIPT_URL = currentFacility?.google_script_url || import.meta.env.VITE_GOOGLE_SCRIPT_URL;
     if (!GOOGLE_SCRIPT_URL) {
-      toast.error('Chưa cấu hình URL Google Script (VITE_GOOGLE_SCRIPT_URL) trong file .env! Đã lưu cục bộ nhưng bỏ qua đồng bộ Sheets.');
+      toast.error('Chưa cấu hình URL Google Script cho cơ sở này! Đã lưu cục bộ nhưng bỏ qua đồng bộ Sheets.');
       return;
     }
 

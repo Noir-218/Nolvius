@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { supabase } from '../../lib/supabase';
+import { useFacility } from '../../contexts/FacilityContext';
 import { Plus, Edit2, Trash2, Search, Upload, Download } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import * as xlsx from 'xlsx';
@@ -11,6 +11,7 @@ type Ingredient = Database['public']['Tables']['ingredients']['Row'] & {
 };
 
 export const IngredientsTab = () => {
+  const { facilityClient: supabase } = useFacility();
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
   const [categories, setCategories] = useState<{ id: string, name: string }[]>([]);
   const [orderTypes, setOrderTypes] = useState<{ id: string, name: string }[]>([]);
@@ -30,6 +31,8 @@ export const IngredientsTab = () => {
     id: '', name: '', category_id: '', unit: '', min_stock: 0, order_type_id: '', unit_price: 0, substitute_id: ''
   });
   const [conversionUnits, setConversionUnits] = useState<{ id?: string, unit_name: string, conversion_factor: number }[]>([]);
+  const [showSubDropdown, setShowSubDropdown] = useState(false);
+  const [subSearch, setSubSearch] = useState('');
 
   const handleDownloadSample = () => {
     const data = [
@@ -399,8 +402,8 @@ export const IngredientsTab = () => {
       </div>
 
       {/* Database Table */}
-      <div className="table-responsive rounded-4 border shadow-sm overflow-hidden">
-        <table className="table table-hover align-middle mb-0" style={{ fontSize: '13px' }}>
+      <div className="table-responsive rounded-4 border shadow-sm">
+        <table className="table table-hover align-middle mb-0" style={{ fontSize: '13px', minWidth: '1000px' }}>
           <thead className="table-light">
             <tr>
               <th className="px-4 py-3 border-0 small fw-black tracking-widest text-uppercase text-secondary">Mã NL</th>
@@ -500,18 +503,34 @@ export const IngredientsTab = () => {
           </div>
           <div className="col-12">
             <label className="form-label small fw-bold text-muted">Nguyên Liệu Thay Thế (Khi hết tồn kho)</label>
-            <select 
-              value={formData.substitute_id} 
-              onChange={e => setFormData({ ...formData, substitute_id: e.target.value })} 
-              className="form-select border-primary-subtle"
-            >
-              <option value="">-- Không --</option>
-              {ingredients
-                .filter(i => i.id !== editingId)
-                .map(i => (
-                  <option key={i.id} value={i.id}>{i.name} ({i.unit})</option>
-                ))}
-            </select>
+            <div className="position-relative">
+              <input 
+                type="text" 
+                className="form-control border-primary-subtle" 
+                placeholder="Tìm nguyên liệu thay thế..." 
+                value={showSubDropdown ? subSearch : (ingredients.find(i => i.id === formData.substitute_id)?.name || '')} 
+                onFocus={() => { setShowSubDropdown(true); setSubSearch(''); }}
+                onChange={(e) => setSubSearch(e.target.value)}
+                onBlur={() => setTimeout(() => setShowSubDropdown(false), 200)}
+              />
+              {showSubDropdown && (
+                <ul className="list-group position-absolute w-100 shadow-sm" style={{ zIndex: 1000, maxHeight: '200px', overflowY: 'auto', marginTop: '2px' }}>
+                  <li className="list-group-item list-group-item-action cursor-pointer py-2" onMouseDown={() => setFormData({ ...formData, substitute_id: '' })}>-- Không --</li>
+                  {ingredients
+                    .filter(i => {
+                      if (i.id === editingId) return false;
+                      const searchNormalized = subSearch.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase();
+                      const nameNormalized = i.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase();
+                      return nameNormalized.includes(searchNormalized);
+                    })
+                    .map(i => (
+                      <li key={i.id} className="list-group-item list-group-item-action cursor-pointer py-2" onMouseDown={() => setFormData({ ...formData, substitute_id: i.id })}>
+                        {i.name} ({i.unit})
+                      </li>
+                    ))}
+                </ul>
+              )}
+            </div>
           </div>
           <div className="col-12 col-md-6">
             <label className="form-label small fw-bold text-muted">Đơn Giá Nhập (*)</label>

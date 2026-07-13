@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../../lib/supabase';
+import { useFacility } from '../../contexts/FacilityContext';
 import { Edit2, X, Search } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 
@@ -18,6 +18,7 @@ const unsignedString = (str: string) => {
 };
 
 export const RecipesTab = () => {
+  const { facilityClient: supabase } = useFacility();
   const [products, setProducts] = useState<any[]>([]);
   const [ingredients, setIngredients] = useState<any[]>([]);
   const [recipes, setRecipes] = useState<any[]>([]);

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
+import { useFacility } from '../contexts/FacilityContext';
 import { Plus, Search, Trash2, Edit2, X, ChevronDown, ChevronRight, Eye, Copy, AlertTriangle, FileSpreadsheet } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { Modal } from '../components/ui/Modal';
@@ -94,6 +94,8 @@ const emptyLine = (): LineItem => ({
 
 export default function Transactions() {
   const { user } = useAuth();
+  const { facilityClient } = useFacility();
+  const supabase = facilityClient!;
   
   const [activeTab, setActiveTab] = useState<'history' | 'branches'>('history');
   const [transactions, setTransactions] = useState<Transaction[]>([]);
