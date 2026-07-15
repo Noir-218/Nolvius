@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useFacility } from '../contexts/FacilityContext';
-import { Search, AlertTriangle, AlertCircle, CheckCircle2, ClipboardList, Calendar, Archive, Info, CalendarCheck } from 'lucide-react';
-import { format, parseISO, endOfMonth } from 'date-fns';
+import { Search, AlertTriangle, AlertCircle, CheckCircle2, ClipboardList, Calendar, Archive, Info, CalendarCheck, RefreshCw } from 'lucide-react';
+import { format, parseISO, endOfMonth, addDays, subDays } from 'date-fns';
 import { StockAIAssistant } from '../components/StockAIAssistant';
 import { IngredientLossAnalyzer } from '../components/IngredientLossAnalyzer';
+import toast from 'react-hot-toast';
 
 const unsignedString = (str: string) =>
   str.normalize('NFC').toLowerCase()
@@ -55,6 +56,154 @@ const Stock = () => {
   const [totalWasteCost, setTotalWasteCost] = useState<number>(0);
   const [recentTransactions, setRecentTransactions] = useState<any[]>([]);
   const [selectedIngredient, setSelectedIngredient] = useState<{ id: string; name: string; unit: string } | null>(null);
+  const [syncing, setSyncing] = useState(false);
+
+  const handleSyncData = async () => {
+    setSyncing(true);
+    const toastId = toast.loading('Đang đồng bộ số liệu kiểm kê...');
+    
+    try {
+      const parsedDate = parseISO(`${selectedMonth}-01`);
+      const monthStart = format(parsedDate, 'yyyy-MM-dd');
+      const todayStr = format(new Date(), 'yyyy-MM-dd');
+      
+      const monthEnd = format(endOfMonth(parsedDate), 'yyyy-MM-dd');
+      const endDate = todayStr < monthEnd ? todayStr : monthEnd;
+
+      const { data: openingData } = await supabase
+        .from('monthly_opening_stock')
+        .select('ingredient_id, opening_stock')
+        .eq('year_month', selectedMonth);
+        
+      const openingMap: Record<string, number> = {};
+      if (openingData) {
+        openingData.forEach(m => {
+          openingMap[m.ingredient_id] = m.opening_stock ?? 0;
+        });
+      }
+
+      // Note: Removed sealedBranchIds logic to match Audit.tsx exactly
+
+      const { data: monthlyAudits } = await supabase
+        .from('stock_audits')
+        .select('id, ingredient_id, audit_date, opening_stock, theoretical_stock, stock_in_store, stock_in_counter, actual_stock, notes, store_calc_breakdown, counter_calc_breakdown, audited_by, created_at')
+        .gte('audit_date', monthStart)
+        .lte('audit_date', endDate)
+        .order('audit_date', { ascending: true });
+
+      if (!monthlyAudits || monthlyAudits.length === 0) {
+        toast.success('Không có phiếu kiểm kê nào trong tháng cần đồng bộ.', { id: toastId });
+        setSyncing(false);
+        return;
+      }
+
+      const { data: txData } = await supabase
+        .from('stock_transactions')
+        .select('ingredient_id, type, quantity, transaction_date, branch_id')
+        .gte('transaction_date', monthStart)
+        .lte('transaction_date', endDate)
+        .order('transaction_date', { ascending: true })
+        .limit(10000);
+
+      const txMap: Record<string, Record<string, number>> = {};
+      if (txData) {
+        txData.forEach(tx => {
+          if (!tx.ingredient_id) return;
+          const qty = Number(tx.quantity);
+          let change = 0;
+          
+          if (['IN', 'IN_TRANSFER'].includes(tx.type)) {
+            change = qty;
+          } else if (['OUT', 'WASTE', 'WASTE_SYSTEM', 'SALES_USAGE'].includes(tx.type)) {
+            change = -Math.abs(qty);
+          } else {
+            // Match Audit.tsx: ignore other types
+            change = 0;
+          }
+          
+          if (!txMap[tx.ingredient_id]) txMap[tx.ingredient_id] = {};
+          txMap[tx.ingredient_id][tx.transaction_date] = (txMap[tx.ingredient_id][tx.transaction_date] || 0) + change;
+        });
+      }
+
+      const updates: any[] = [];
+      const auditsByIng: Record<string, any[]> = {};
+      
+      monthlyAudits.forEach(a => {
+        if (!a.ingredient_id) return;
+        if (!auditsByIng[a.ingredient_id]) auditsByIng[a.ingredient_id] = [];
+        auditsByIng[a.ingredient_id].push(a);
+      });
+
+      // Hàm tính tổng giao dịch trong một khoảng ngày (inclusive cả hai đầu)
+      const sumTxInRange = (ingId: string, fromDate: string, toDate: string): number => {
+        const ingTx = txMap[ingId];
+        if (!ingTx) return 0;
+        let total = 0;
+        for (const [d, v] of Object.entries(ingTx)) {
+          if (d >= fromDate && d <= toDate) total += v;
+        }
+        return total;
+      };
+
+      for (const [ingId, audits] of Object.entries(auditsByIng)) {
+        // Tồn đầu tháng làm điểm xuất phát
+        let prevActual = openingMap[ingId] || 0;
+        // Ngày "cuối" của kỳ trước (dùng một ngày TRƯỚC ngày đầu tháng để logic range hoạt động đúng)
+        let prevAuditDate: string | null = null;
+
+        for (const audit of audits) {
+          const auditDate: string = audit.audit_date;
+
+          // opening = actual của lần kiểm trước + giao dịch TỪ NGÀY SAU lần kiểm trước ĐẾN NGÀY TRƯỚC ngày kiểm này
+          const gapStart = prevAuditDate
+            ? format(addDays(parseISO(prevAuditDate), 1), 'yyyy-MM-dd')
+            : monthStart;
+          const gapEnd = format(subDays(parseISO(auditDate), 1), 'yyyy-MM-dd');
+
+          const gapTx = gapEnd >= gapStart ? sumTxInRange(ingId, gapStart, gapEnd) : 0;
+          const openingForAudit = prevActual + gapTx;
+
+          // theoretical = opening + giao dịch trong NGÀY kiểm kê
+          const auditDayTx = txMap[ingId]?.[auditDate] || 0;
+          const theoreticalForAudit = openingForAudit + auditDayTx;
+
+          if (
+            Math.abs((audit.theoretical_stock || 0) - theoreticalForAudit) > 0.0001 ||
+            Math.abs((audit.opening_stock || 0) - openingForAudit) > 0.0001
+          ) {
+            updates.push({
+              ...audit,
+              opening_stock: openingForAudit,
+              theoretical_stock: theoreticalForAudit
+            });
+          }
+
+          // Sau mỗi phiếu kiểm kê, gốc tiếp theo là THỰC TẾ đếm được (actual_stock)
+          prevActual = audit.actual_stock ?? theoreticalForAudit;
+          prevAuditDate = auditDate;
+        }
+      }
+
+      if (updates.length > 0) {
+        const { error } = await supabase
+          .from('stock_audits')
+          .upsert(updates, { onConflict: 'ingredient_id,audit_date' });
+
+        if (error) throw error;
+        toast.success(`Đã đồng bộ ${updates.length} bản ghi kiểm kê!`, { id: toastId });
+        fetchStock();
+      } else {
+        toast.success('Tất cả số liệu kiểm kê đã đồng bộ, không có sai lệch.', { id: toastId });
+      }
+
+    } catch (err: any) {
+      console.error(err);
+      toast.error('Lỗi khi đồng bộ: ' + (err.message || 'Không rõ'), { id: toastId });
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const fetchStock = async () => {
     setLoading(true);
@@ -85,16 +234,7 @@ const Stock = () => {
       .order('name');
     setOrderTypes(typesData || []);
 
-    // 0. Fetch branches to identify sealed ones
-    const { data: allBranches } = await supabase.from('branches').select('id, name');
-    const sealedBranchIds = new Set(
-      (allBranches || [])
-        .filter(b => {
-          const n = b.name.toLowerCase();
-          return n.includes('niêm phong') || n.includes('sealed') || n.includes('lưu trữ') || n.includes('kho cũ');
-        })
-        .map(b => b.id)
-    );
+    // Note: Removed sealedBranchIds logic to match Audit.tsx exactly
 
     // 1. Fetch all ingredients
     const { data: ingData } = await supabase
@@ -166,7 +306,8 @@ const Stock = () => {
       .from('stock_transactions')
       .select('ingredient_id, type, quantity, transaction_date, branch_id, ingredients(name)')
       .gte('transaction_date', monthStart)
-      .lte('transaction_date', effectiveEndDate);
+      .lte('transaction_date', effectiveEndDate)
+      .limit(10000);
 
     const txSinceMap: Record<string, number> = {};
     const totalTxMap: Record<string, number> = {};
@@ -180,11 +321,12 @@ const Stock = () => {
         let change = 0;
         
         if (['IN', 'IN_TRANSFER'].includes(tx.type)) {
-          if (!tx.branch_id || !sealedBranchIds.has(tx.branch_id)) {
-            change = qty;
-          }
-        } else {
+          change = qty;
+        } else if (['OUT', 'WASTE', 'WASTE_SYSTEM', 'SALES_USAGE'].includes(tx.type)) {
           change = -Math.abs(qty);
+        } else {
+          // Match Audit.tsx: ignore other types
+          change = 0;
         }
         
         // Cumulative total for the whole month (for Book Stock)
@@ -333,19 +475,31 @@ const Stock = () => {
     <div className="container-fluid py-4 pb-10 animate__animated animate__fadeIn">
       {/* HEADER */}
       <div className="mb-8">
-        <div className="flex items-center gap-4">
-          <div className="bg-teal-600 p-3 rounded-2xl shadow-lg shadow-teal-100 ring-4 ring-teal-50">
-            <Archive className="text-white" size={28} />
+        <div className="flex items-center justify-between flex-wrap gap-4">
+          <div className="flex items-center gap-4">
+            <div className="bg-teal-600 p-3 rounded-2xl shadow-lg shadow-teal-100 ring-4 ring-teal-50">
+              <Archive className="text-white" size={28} />
+            </div>
+            <div>
+              <h1 className="h3 fw-black text-gray-800 mb-0 tracking-tight text-uppercase">QUẢN LÝ TỒN KHO</h1>
+              <p className="text-gray-400 small mb-0 font-bold uppercase tracking-widest mt-1">
+                Số liệu hiển thị dựa trên <span className="text-teal-600">phiếu kiểm kê gần nhất</span>
+                {selectedClosingDate && (
+                  <span className="ms-2 text-amber-600 font-black">• Chốt tồn đến <span className="underline underline-offset-2">{effectiveClosingLabel}</span></span>
+                )}
+              </p>
+            </div>
           </div>
-          <div>
-            <h1 className="h3 fw-black text-gray-800 mb-0 tracking-tight text-uppercase">QUẢN LÝ TỒN KHO</h1>
-            <p className="text-gray-400 small mb-0 font-bold uppercase tracking-widest mt-1">
-              Số liệu hiển thị dựa trên <span className="text-teal-600">phiếu kiểm kê gần nhất</span>
-              {selectedClosingDate && (
-                <span className="ms-2 text-amber-600 font-black">• Chốt tồn đến <span className="underline underline-offset-2">{effectiveClosingLabel}</span></span>
-              )}
-            </p>
-          </div>
+          
+          <button 
+            onClick={handleSyncData}
+            disabled={syncing}
+            className="btn btn-teal rounded-2xl px-4 py-2.5 fw-bold shadow-sm flex items-center gap-2 hover:-translate-y-0.5 transition-transform shrink-0"
+            title="Tính toán và đồng bộ lại toàn bộ số lượng Tồn lý thuyết trong tháng"
+          >
+            <RefreshCw size={18} className={syncing ? "animate-spin" : ""} />
+            <span className="hidden sm:inline">{syncing ? 'Đang đồng bộ...' : 'Lưu tổng hợp (Đồng bộ)'}</span>
+          </button>
         </div>
       </div>
 
