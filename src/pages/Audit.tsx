@@ -249,6 +249,8 @@ export default function Audit() {
         .select('ingredient_id, type, quantity, transaction_date')
         .gte('transaction_date', startOfThisMonth)
         .lt('transaction_date', selectedDate)
+        .order('transaction_date', { ascending: false })
+        .order('created_at', { ascending: false })
         .limit(10000) // Increase limit for history
     ]);
 
