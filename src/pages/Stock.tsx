@@ -86,7 +86,7 @@ const Stock = () => {
 
       const { data: monthlyAudits } = await supabase
         .from('stock_audits')
-        .select('id, ingredient_id, audit_date, opening_stock, theoretical_stock, stock_in_store, stock_in_counter, actual_stock, notes, store_calc_breakdown, counter_calc_breakdown, audited_by, created_at')
+        .select('id, ingredient_id, audit_date, opening_stock, theoretical_stock, stock_in_store, stock_in_counter, actual_stock, notes, audited_by, created_at')
         .gte('audit_date', monthStart)
         .lte('audit_date', endDate)
         .order('audit_date', { ascending: true });
