@@ -31,8 +31,15 @@ export const RecipesTab = () => {
   const [selectedProduct, setSelectedProduct] = useState<string | null>(null);
   
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [formData, setFormData] = useState<{type: 'ingredient' | 'product', component_id: string, quantity: string}[]>([
-    { type: 'ingredient', component_id: '', quantity: '0' }
+  const [formData, setFormData] = useState<{
+    type: 'ingredient' | 'product';
+    component_id: string;
+    quantity: string;
+    searchTerm: string;
+    isDropdownOpen: boolean;
+    selectedIndex: number;
+  }[]>([
+    { type: 'ingredient', component_id: '', quantity: '0', searchTerm: '', isDropdownOpen: false, selectedIndex: -1 }
   ]);
 
   const fetchData = async () => {
@@ -59,13 +66,21 @@ export const RecipesTab = () => {
     setSelectedProduct(productId);
     const existingReqs = recipes.filter(r => r.product_id === productId);
     if (existingReqs.length > 0) {
-      setFormData(existingReqs.map(r => ({
-        type: r.sub_product_id ? 'product' : 'ingredient',
-        component_id: r.sub_product_id || r.ingredient_id,
-        quantity: r.quantity.toString()
-      })));
+      setFormData(existingReqs.map(r => {
+        const isProduct = !!r.sub_product_id;
+        const compId = r.sub_product_id || r.ingredient_id;
+        const name = isProduct ? (r.products?.name || '') : (r.ingredients?.name || '');
+        return {
+          type: isProduct ? 'product' : 'ingredient',
+          component_id: compId,
+          quantity: r.quantity.toString(),
+          searchTerm: name,
+          isDropdownOpen: false,
+          selectedIndex: -1,
+        };
+      }));
     } else {
-      setFormData([{ type: 'ingredient', component_id: '', quantity: '0' }]);
+      setFormData([{ type: 'ingredient', component_id: '', quantity: '0', searchTerm: '', isDropdownOpen: false, selectedIndex: -1 }]);
     }
     setIsModalOpen(true);
   };
@@ -73,17 +88,14 @@ export const RecipesTab = () => {
   const handleSaveRecipe = async () => {
     if (!selectedProduct) return;
     
-    // Check validation
     const validData = formData.filter(f => f.component_id && (parseFloat(f.quantity) || 0) > 0);
     if (validData.length === 0) {
       alert('Vui lòng thêm ít nhất 1 thành phần có định lượng > 0');
       return;
     }
 
-    // Delete old recipe lines
     await supabase.from('recipes').delete().eq('product_id', selectedProduct);
     
-    // Insert new
     const inserts = validData.map(f => ({
       product_id: selectedProduct,
       ingredient_id: f.type === 'ingredient' ? f.component_id : null,
@@ -104,7 +116,6 @@ export const RecipesTab = () => {
 
   return (
     <div className="row g-4">
-      {/* Product List */}
       <div className="col-12 col-md-4 border-end">
         <div className="mb-3 space-y-2">
           <div className="input-group input-group-sm mb-2 shadow-sm">
@@ -158,7 +169,6 @@ export const RecipesTab = () => {
         </div>
       </div>
 
-      {/* Recipe Details */}
       <div className="col-12 col-md-8">
         {selectedProduct ? (
           <div className="card border-0 shadow-sm rounded-4 overflow-hidden">
@@ -236,131 +246,193 @@ export const RecipesTab = () => {
 
           <div className="col-12">
             <div className="space-y-3">
-              {formData.map((row, idx) => (
-                <div key={idx} className="card border-0 bg-light p-3 rounded-4 shadow-hover-sm transition-all position-relative overflow-hidden mb-3">
-                   <div className="row g-2 align-items-center">
-                    <div className="col-12 col-md-2">
-                       <label className="form-label mb-1 text-uppercase fw-bold text-secondary opacity-75" style={{ fontSize: '10px' }}>Loại</label>
-                       <select 
-                        className="form-select form-select-sm fw-bold"
-                        value={row.type}
-                        onChange={e => {
-                          const newF = [...formData];
-                          newF[idx].type = e.target.value as 'ingredient' | 'product';
-                          newF[idx].component_id = '';
-                          setFormData(newF);
-                        }}
-                       >
-                         <option value="ingredient">Nguyên liệu</option>
-                         <option value="product">Sản phẩm</option>
-                       </select>
-                    </div>
-                    <div className="col-12 col-md-5">
-                      <label className="form-label mb-1 text-uppercase fw-bold text-secondary opacity-75" style={{ fontSize: '10px' }}>{row.type === 'ingredient' ? 'Chọn Nguyên Liệu' : 'Chọn Sản Phẩm Con'}</label>
-                      <select 
-                        value={row.component_id} 
-                        onChange={e => {
-                          const newF = [...formData];
-                          newF[idx].component_id = e.target.value;
-                          setFormData(newF);
-                        }}
-                        className="form-select form-select-sm fw-bold border-primary-subtle"
-                      >
-                        <option value="">-- Chọn thành phần --</option>
-                        {row.type === 'ingredient' ? (
-                          <>
-                            {categories.map(cat => {
-                              const groupItems = ingredients.filter(i => i.category_id === cat.id);
-                              if (groupItems.length === 0) return null;
-                              return (
-                                <optgroup key={cat.id} label={cat.name}>
-                                  {groupItems.map(i => (
-                                    <option key={i.id} value={i.id}>{i.name} ({i.unit})</option>
-                                  ))}
-                                </optgroup>
-                              );
-                            })}
-                            {ingredients.some(i => !i.category_id) && (
-                              <optgroup label="Khác">
-                                {ingredients
-                                  .filter(i => !i.category_id)
-                                  .map(i => (
-                                    <option key={i.id} value={i.id}>{i.name} ({i.unit})</option>
-                                  ))
-                                }
-                              </optgroup>
-                            )}
-                          </>
-                        ) : (
-                          <>
-                             {productCategories.map(cat => {
-                              const groupItems = products.filter(p => p.category_id === cat.id && p.id !== selectedProduct);
-                              if (groupItems.length === 0) return null;
-                              return (
-                                <optgroup key={cat.id} label={cat.name}>
-                                  {groupItems.map(p => (
-                                    <option key={p.id} value={p.id}>{p.name} ({p.unit || '-'})</option>
-                                  ))}
-                                </optgroup>
-                              );
-                            })}
-                             {products.some(p => !p.category_id && p.id !== selectedProduct) && (
-                              <optgroup label="Khác">
-                                {products
-                                  .filter(p => !p.category_id && p.id !== selectedProduct)
-                                  .map(p => (
-                                    <option key={p.id} value={p.id}>{p.name} ({p.unit || '-'})</option>
-                                  ))
-                                }
-                              </optgroup>
-                            )}
-                          </>
-                        )}
-                      </select>
-                    </div>
-                    <div className="col-8 col-md-4">
-                      <label className="form-label mb-1 text-uppercase fw-bold text-secondary opacity-75" style={{ fontSize: '10px' }}>Định lượng</label>
-                      <div className="input-group input-group-sm">
-                        <input 
-                          type="number" step="0.000001" min="0" 
-                          value={row.quantity} 
+              {formData.map((row, idx) => {
+                const options = row.type === 'ingredient'
+                  ? ingredients
+                  : products.filter(p => p.id !== selectedProduct);
+
+                const filteredOptions = options.filter(o =>
+                  unsignedString(o.name).includes(unsignedString(row.searchTerm || ''))
+                );
+
+                const selectedItem = options.find(o => o.id === row.component_id);
+
+                return (
+                  <div key={idx} className="card border-0 bg-light p-3 rounded-4 shadow-hover-sm transition-all position-relative mb-3" style={{ overflow: 'visible' }}>
+                    <div className="row g-2 align-items-start">
+                      <div className="col-12 col-md-2">
+                        <label className="form-label mb-1 text-uppercase fw-bold text-secondary opacity-75" style={{ fontSize: '10px' }}>Loại</label>
+                        <select 
+                          className="form-select form-select-sm fw-bold"
+                          value={row.type}
                           onChange={e => {
                             const newF = [...formData];
-                            newF[idx].quantity = e.target.value;
+                            newF[idx] = {
+                              ...newF[idx],
+                              type: e.target.value as 'ingredient' | 'product',
+                              component_id: '',
+                              searchTerm: '',
+                              isDropdownOpen: false,
+                              selectedIndex: -1,
+                            };
                             setFormData(newF);
                           }}
-                          onWheel={e => (e.target as HTMLInputElement).blur()}
-                          onKeyDown={e => { if (e.key === 'ArrowUp' || e.key === 'ArrowDown') e.preventDefault(); }}
-                          className="form-control text-end fw-black text-primary"
-                          placeholder="Số lượng"
-                        />
-                        <span className="input-group-text bg-white small text-secondary">
-                          {row.type === 'ingredient' 
-                            ? (ingredients.find(i => i.id === row.component_id)?.unit || 'unit')
-                            : (products.find(p => p.id === row.component_id)?.unit || 'unit')
-                          }
-                        </span>
+                        >
+                          <option value="ingredient">Nguyên liệu</option>
+                          <option value="product">Sản phẩm</option>
+                        </select>
+                      </div>
+
+                      <div className="col-12 col-md-5 position-relative">
+                        <label className="form-label mb-1 text-uppercase fw-bold text-secondary opacity-75" style={{ fontSize: '10px' }}>
+                          {row.type === 'ingredient' ? 'Tìm Nguyên Liệu' : 'Tìm Sản Phẩm Con'}
+                        </label>
+                        <div className="input-group input-group-sm">
+                          <span className="input-group-text bg-white border-end-0 text-muted"><Search size={13} /></span>
+                          <input
+                            type="text"
+                            className={`form-control border-start-0 ps-0 fw-bold ${row.component_id ? 'border-primary-subtle' : ''}`}
+                            placeholder={row.type === 'ingredient' ? 'Gõ để tìm nguyên liệu...' : 'Gõ để tìm sản phẩm...'}
+                            value={row.searchTerm || ''}
+                            onChange={e => {
+                              const term = e.target.value;
+                              const newF = [...formData];
+                              newF[idx] = {
+                                ...newF[idx],
+                                searchTerm: term,
+                                isDropdownOpen: true,
+                                component_id: term === '' ? '' : newF[idx].component_id,
+                                selectedIndex: -1,
+                              };
+                              setFormData(newF);
+                            }}
+                            onFocus={() => {
+                              const newF = [...formData];
+                              newF[idx] = { ...newF[idx], isDropdownOpen: true };
+                              setFormData(newF);
+                            }}
+                            onBlur={() => {
+                              setTimeout(() => {
+                                const newF = [...formData];
+                                newF[idx] = { ...newF[idx], isDropdownOpen: false };
+                                setFormData(newF);
+                              }, 200);
+                            }}
+                            onKeyDown={e => {
+                              if (!row.isDropdownOpen || filteredOptions.length === 0) return;
+                              if (e.key === 'ArrowDown') {
+                                e.preventDefault();
+                                const newF = [...formData];
+                                newF[idx] = { ...newF[idx], selectedIndex: ((row.selectedIndex ?? -1) + 1) % filteredOptions.length };
+                                setFormData(newF);
+                              } else if (e.key === 'ArrowUp') {
+                                e.preventDefault();
+                                const newF = [...formData];
+                                newF[idx] = { ...newF[idx], selectedIndex: ((row.selectedIndex ?? -1) - 1 + filteredOptions.length) % filteredOptions.length };
+                                setFormData(newF);
+                              } else if (e.key === 'Enter' || e.key === 'Tab') {
+                                const selIdx = row.selectedIndex ?? -1;
+                                if (selIdx >= 0 && selIdx < filteredOptions.length) {
+                                  e.preventDefault();
+                                  const item = filteredOptions[selIdx];
+                                  const newF = [...formData];
+                                  newF[idx] = { ...newF[idx], component_id: item.id, searchTerm: item.name, isDropdownOpen: false, selectedIndex: -1 };
+                                  setFormData(newF);
+                                }
+                              }
+                            }}
+                          />
+                        </div>
+
+                        {selectedItem && !row.isDropdownOpen && (
+                          <div className="mt-1">
+                            <span className="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill px-2" style={{ fontSize: '10px' }}>
+                              ✓ {selectedItem.name} · {selectedItem.unit || '-'}
+                            </span>
+                          </div>
+                        )}
+
+                        {row.isDropdownOpen && (row.searchTerm || '').length > 0 && (
+                          <div className="position-absolute w-100 shadow-lg bg-white rounded-3 overflow-hidden border" style={{ zIndex: 1060, left: 0, right: 0, top: 'calc(100% + 4px)' }}>
+                            <div className="list-group list-group-flush" style={{ maxHeight: '200px', overflowY: 'auto' }}>
+                              {filteredOptions.length === 0 ? (
+                                <div className="p-3 text-center text-muted small italic">Không tìm thấy kết quả</div>
+                              ) : (
+                                filteredOptions.map((o, oIdx) => (
+                                  <button
+                                    key={o.id}
+                                    type="button"
+                                    className={`list-group-item list-group-item-action border-0 py-2 px-3 small d-flex justify-content-between align-items-center ${row.selectedIndex === oIdx ? 'bg-primary text-white' : ''}`}
+                                    onMouseDown={() => {
+                                      const newF = [...formData];
+                                      newF[idx] = { ...newF[idx], component_id: o.id, searchTerm: o.name, isDropdownOpen: false, selectedIndex: -1 };
+                                      setFormData(newF);
+                                    }}
+                                  >
+                                    <div>
+                                      <span className="fw-bold">{o.name}</span>
+                                      {row.type === 'ingredient' && (
+                                        <div className={`${row.selectedIndex === oIdx ? 'text-white-50' : 'text-muted'}`} style={{ fontSize: '10px' }}>
+                                          {categories.find(c => c.id === o.category_id)?.name || 'Không có danh mục'}
+                                        </div>
+                                      )}
+                                    </div>
+                                    <span className={`badge rounded-pill ${row.selectedIndex === oIdx ? 'bg-white text-primary' : 'bg-light text-secondary'}`}>
+                                      {o.unit || '-'}
+                                    </span>
+                                  </button>
+                                ))
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="col-8 col-md-4">
+                        <label className="form-label mb-1 text-uppercase fw-bold text-secondary opacity-75" style={{ fontSize: '10px' }}>Định lượng</label>
+                        <div className="input-group input-group-sm">
+                          <input 
+                            type="number" step="0.000001" min="0" 
+                            value={row.quantity} 
+                            onChange={e => {
+                              const newF = [...formData];
+                              newF[idx].quantity = e.target.value;
+                              setFormData(newF);
+                            }}
+                            onWheel={e => (e.target as HTMLInputElement).blur()}
+                            onKeyDown={e => { if (e.key === 'ArrowUp' || e.key === 'ArrowDown') e.preventDefault(); }}
+                            className="form-control text-end fw-black text-primary"
+                            placeholder="Số lượng"
+                          />
+                          <span className="input-group-text bg-white small text-secondary">
+                            {row.type === 'ingredient' 
+                              ? (ingredients.find(i => i.id === row.component_id)?.unit || 'unit')
+                              : (products.find(p => p.id === row.component_id)?.unit || 'unit')
+                            }
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="col-4 col-md-1 text-end pt-3 pt-md-0 d-flex align-items-end justify-content-end">
+                        <button 
+                          onClick={() => setFormData(formData.filter((_, i) => i !== idx))}
+                          className="btn btn-outline-danger border-0 rounded-circle p-2 hover-shadow"
+                          title="Xóa dòng"
+                        >
+                          <X size={18} />
+                        </button>
                       </div>
                     </div>
-                    <div className="col-4 col-md-1 text-end pt-3 pt-md-0">
-                      <button 
-                        onClick={() => setFormData(formData.filter((_, i) => i !== idx))}
-                        className="btn btn-outline-danger border-0 rounded-circle p-2 hover-shadow"
-                        title="Xóa dòng"
-                      >
-                        <X size={18} />
-                      </button>
-                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
           
           <div className="col-12 mt-2">
             <button 
               type="button" 
-              onClick={() => setFormData([...formData, { type: 'ingredient', component_id: '', quantity: '0' }])}
+              onClick={() => setFormData([...formData, { type: 'ingredient', component_id: '', quantity: '0', searchTerm: '', isDropdownOpen: false, selectedIndex: -1 }])}
               className="btn btn-outline-primary w-100 py-3 border-2 border-dashed rounded-4 fw-bold shadow-hover-sm transition-all"
             >
               + Thêm Thành Phần Mới

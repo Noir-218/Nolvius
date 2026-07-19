@@ -17,6 +17,7 @@ import Expenses from './pages/Expenses';
 import Users from './pages/Users';
 import Profile from './pages/Profile';
 import Scheduling from './pages/Scheduling';
+import DataSync from './pages/DataSync';
 
 import { Toaster } from 'react-hot-toast';
 
@@ -45,6 +46,7 @@ function App() {
               <Route path="users" element={<Users />} />
               <Route path="profile" element={<Profile />} />
               <Route path="scheduling" element={<Scheduling />} />
+              <Route path="sync" element={<DataSync />} />
             </Route>
             
             <Route path="*" element={<Navigate to="/" replace />} />

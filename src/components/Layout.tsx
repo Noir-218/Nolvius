@@ -20,7 +20,8 @@ import {
   Sparkles,
   CalendarDays,
   Building,
-  RefreshCw
+  RefreshCw,
+  Database
 } from 'lucide-react';
 import { LoungeBubble } from './LoungeBubble';
 
@@ -38,6 +39,7 @@ const navItems = [
   { path: '/expenses', label: 'Quản Lý Thu Chi', icon: Home, roles: ['master'] },
   { path: '/users', label: 'Quản Trị Người Dùng', icon: UsersIcon, roles: ['master'] },
   { path: '/scheduling', label: 'Xếp Lịch Làm Việc', icon: CalendarDays, roles: ['master', 'SM', 'MB'] },
+  { path: '/sync', label: 'Đồng Bộ Dữ Liệu', icon: Database, roles: ['master'] },
 
 ];
 
