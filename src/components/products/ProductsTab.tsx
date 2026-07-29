@@ -4,6 +4,7 @@ import { Plus, Edit2, Trash2, Search, Upload } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import * as xlsx from 'xlsx';
 import type { Database } from '../../types/database.types';
+import { usePermissions } from '../../hooks/usePermissions';
 
 type Product = Database['public']['Tables']['products']['Row'] & {
   product_categories: { name: string } | null;
@@ -26,6 +27,7 @@ const unsignedString = (str: string) => {
 
 export const ProductsTab = () => {
   const { facilityClient: supabase } = useFacility();
+  const { canEdit } = usePermissions('products');
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<{id: string, name: string}[]>([]);
   const [loading, setLoading] = useState(true);
@@ -222,46 +224,52 @@ export const ProductsTab = () => {
    return (
     <div>
       {/* Toolbar */}
-      <div className="row g-3 mb-4">
-        <div className="col-12 col-md-4">
-          <div className="input-group shadow-sm">
-            <span className="input-group-text bg-white border-end-0 text-muted">
-              <Search size={18} />
-            </span>
-            <input
-              id="main-search-input"
-              type="text"
-              placeholder="Tìm kiếm SP..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="form-control border-start-0 ps-0"
-            />
+      <div className="rounded-3 mb-4 p-3" style={{ background: '#F0EDE4', border: '1px solid #DDD9CE' }}>
+        <div className="row g-2 align-items-center">
+          <div className="col-12 col-md-4">
+            <div className="input-group">
+              <span className="input-group-text">
+                <Search size={16} />
+              </span>
+              <input
+                id="main-search-input"
+                type="text"
+                placeholder="Tìm kiếm SP..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="form-control"
+              />
+            </div>
           </div>
-        </div>
-        <div className="col-12 col-md-3">
-          <select
-            value={filterCategory}
-            onChange={(e) => setFilterCategory(e.target.value)}
-            className="form-select shadow-sm"
-          >
-            <option value="">Tất cả danh mục</option>
-            {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-        </div>
-        <div className="col-12 col-md-5 d-flex gap-2 justify-content-md-end">
-          <input type="file" accept=".xlsx, .xls" className="hidden" ref={fileInputRef} onChange={handleFileUpload} />
-          <button 
-            onClick={() => fileInputRef.current?.click()} 
-            className="btn btn-outline-success d-flex align-items-center gap-2 rounded-3 fw-bold flex-grow-1 flex-md-grow-0"
-          >
-            <Upload size={18} /> <span>Import</span>
-          </button>
-          <button 
-            onClick={() => openModal()} 
-            className="btn btn-primary d-flex align-items-center gap-2 rounded-3 fw-bold shadow-sm flex-grow-1 flex-md-grow-0"
-          >
-            <Plus size={18} /> <span>Thêm Mới</span>
-          </button>
+          <div className="col-12 col-md-3">
+            <select
+              value={filterCategory}
+              onChange={(e) => setFilterCategory(e.target.value)}
+              className="form-select"
+            >
+              <option value="">Tất cả danh mục</option>
+              {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+          <div className="col-12 col-md-5 d-flex gap-2 justify-content-md-end">
+            <input type="file" accept=".xlsx, .xls" className="hidden" ref={fileInputRef} onChange={handleFileUpload} />
+            {canEdit && (
+              <>
+                <button 
+                  onClick={() => fileInputRef.current?.click()} 
+                  className="btn btn-outline-secondary d-flex align-items-center gap-2 rounded-3 fw-semibold flex-grow-1 flex-md-grow-0"
+                >
+                  <Upload size={16} /> <span>Import</span>
+                </button>
+                <button 
+                  onClick={() => openModal()} 
+                  className="btn btn-primary d-flex align-items-center gap-2 rounded-3 fw-semibold shadow-sm flex-grow-1 flex-md-grow-0"
+                >
+                  <Plus size={16} /> <span>Thêm Mới</span>
+                </button>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
@@ -301,12 +309,16 @@ export const ProductsTab = () => {
                   </td>
                   <td className="px-4 py-3 text-end">
                     <div className="d-flex justify-content-end gap-1">
-                      <button onClick={() => openModal(p)} className="btn btn-sm btn-outline-primary border-0 rounded-circle p-2 hover-shadow">
-                        <Edit2 size={16} />
-                      </button>
-                      <button onClick={() => handleDelete(p.id)} className="btn btn-sm btn-outline-danger border-0 rounded-circle p-2 hover-shadow">
-                        <Trash2 size={16} />
-                      </button>
+                      {canEdit && (
+                        <>
+                          <button onClick={() => openModal(p)} className="btn btn-sm btn-outline-primary border-0 rounded-circle p-2 hover-shadow">
+                            <Edit2 size={16} />
+                          </button>
+                          <button onClick={() => handleDelete(p.id)} className="btn btn-sm btn-outline-danger border-0 rounded-circle p-2 hover-shadow">
+                            <Trash2 size={16} />
+                          </button>
+                        </>
+                      )}
                     </div>
                   </td>
                 </tr>

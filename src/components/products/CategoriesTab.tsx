@@ -3,11 +3,13 @@ import { useFacility } from '../../contexts/FacilityContext';
 import { Plus, Edit2, Trash2, Search } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import type { Database } from '../../types/database.types';
+import { usePermissions } from '../../hooks/usePermissions';
 
 type Category = Database['public']['Tables']['product_categories']['Row'];
 
 export const CategoriesTab = () => {
   const { facilityClient: supabase } = useFacility();
+  const { canEdit } = usePermissions('products');
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -59,28 +61,32 @@ export const CategoriesTab = () => {
   return (
     <div>
       {/* Toolbar */}
-      <div className="row g-3 mb-4 align-items-center">
-        <div className="col-12 col-md-4">
-          <div className="input-group shadow-sm">
-            <span className="input-group-text bg-white border-end-0 text-muted">
-              <Search size={18} />
-            </span>
-            <input
-              type="text"
-              placeholder="Tìm kiếm danh mục..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="form-control border-start-0 ps-0"
-            />
+      <div className="rounded-3 mb-4 p-3" style={{ background: '#F0EDE4', border: '1px solid #DDD9CE' }}>
+        <div className="row g-2 align-items-center">
+          <div className="col-12 col-md-4">
+            <div className="input-group">
+              <span className="input-group-text">
+                <Search size={16} />
+              </span>
+              <input
+                type="text"
+                placeholder="Tìm kiếm danh mục..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="form-control"
+              />
+            </div>
           </div>
-        </div>
-        <div className="col-12 col-md-auto ms-auto text-end">
-          <button 
-            onClick={() => openModal()} 
-            className="btn btn-primary d-flex align-items-center gap-2 rounded-3 fw-bold shadow-sm w-100 w-md-auto justify-content-center"
-          >
-            <Plus size={18} /> <span>Thêm Danh Mục</span>
-          </button>
+          <div className="col-12 col-md-auto ms-auto text-end">
+            {canEdit && (
+              <button 
+                onClick={() => openModal()} 
+                className="btn btn-primary d-flex align-items-center gap-2 rounded-3 fw-semibold shadow-sm w-100 w-md-auto justify-content-center"
+              >
+                <Plus size={16} /> <span>Thêm Danh Mục</span>
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -106,12 +112,16 @@ export const CategoriesTab = () => {
                   <td className="px-4 py-3 text-secondary small italic">{c.description || '-'}</td>
                   <td className="px-4 py-3 text-end">
                     <div className="d-flex justify-content-end gap-1">
-                      <button onClick={() => openModal(c)} className="btn btn-sm btn-outline-primary border-0 rounded-circle p-2 hover-shadow">
-                        <Edit2 size={16} />
-                      </button>
-                      <button onClick={() => handleDelete(c.id)} className="btn btn-sm btn-outline-danger border-0 rounded-circle p-2 hover-shadow">
-                        <Trash2 size={16} />
-                      </button>
+                      {canEdit && (
+                        <>
+                          <button onClick={() => openModal(c)} className="btn btn-sm btn-outline-primary border-0 rounded-circle p-2 hover-shadow">
+                            <Edit2 size={16} />
+                          </button>
+                          <button onClick={() => handleDelete(c.id)} className="btn btn-sm btn-outline-danger border-0 rounded-circle p-2 hover-shadow">
+                            <Trash2 size={16} />
+                          </button>
+                        </>
+                      )}
                     </div>
                   </td>
                 </tr>

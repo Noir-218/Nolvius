@@ -26,7 +26,7 @@ const PERIODS = [
 
 const SOURCE_COLOR: Record<ConsumptionSource, string> = {
   sales: '#8b5cf6',  // purple
-  audit_diff: '#0d9488',  // teal-600
+  audit_diff: '#557A61',  // forest
 };
 
 const SOURCE_LABEL: Record<ConsumptionSource, string> = {
@@ -172,33 +172,31 @@ export default function Analysis() {
       </div>
 
       {/* Period selector */}
-      <div className="card border-0 shadow-sm rounded-4 mb-4 overflow-hidden">
-        <div className="card-body p-3 bg-light">
-          <div className="row align-items-center g-3">
-            <div className="col-12 col-md-auto">
-              <span className="small fw-bold text-muted text-uppercase tracking-wider">Khoảng thời gian:</span>
+      <div className="rounded-3 mb-4 p-3" style={{ background: '#F0EDE4', border: '1px solid #DDD9CE' }}>
+        <div className="row g-2 align-items-center">
+          <div className="col-12 col-md-auto">
+            <span className="small fw-semibold text-secondary text-uppercase tracking-wider">Khoảng thời gian:</span>
+          </div>
+          <div className="col-12 col-md-auto">
+            <div className="btn-group btn-group-sm">
+              {PERIODS.map(p => (
+                <button
+                  key={p.days}
+                  onClick={() => setPeriodDays(p.days)}
+                  className={`btn px-3 fw-bold ${periodDays === p.days
+                    ? 'btn-primary'
+                    : 'btn-outline-secondary bg-white'
+                    }`}
+                >
+                  {p.label}
+                </button>
+              ))}
             </div>
-            <div className="col-12 col-md-auto">
-              <div className="btn-group btn-group-sm w-100 shadow-sm rounded-pill overflow-hidden">
-                {PERIODS.map(p => (
-                  <button
-                    key={p.days}
-                    onClick={() => setPeriodDays(p.days)}
-                    className={`btn px-3 fw-bold ${periodDays === p.days
-                      ? 'btn-primary'
-                      : 'btn-white bg-white text-secondary border'
-                      }`}
-                  >
-                    {p.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="col-12 col-md-auto">
-              <span className="small text-muted">
-                ({format(subDays(new Date(), periodDays), 'dd/MM')} – {format(new Date(), 'dd/MM/yyyy')})
-              </span>
-            </div>
+          </div>
+          <div className="col-12 col-md-auto">
+            <span className="small text-secondary fw-medium">
+              ({format(subDays(new Date(), periodDays), 'dd/MM')} – {format(new Date(), 'dd/MM/yyyy')})
+            </span>
           </div>
         </div>
       </div>

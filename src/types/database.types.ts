@@ -41,6 +41,7 @@ export type Database = {
         }
         Relationships: []
       }
+
       expenses: {
         Row: {
           amount: number
@@ -341,6 +342,7 @@ export type Database = {
           id: string
           role: string | null
           updated_at: string | null
+          action_permissions: Json | null
         }
         Insert: {
           avatar_url?: string | null
@@ -350,6 +352,7 @@ export type Database = {
           id: string
           role?: string | null
           updated_at?: string | null
+          action_permissions?: Json | null
         }
         Update: {
           avatar_url?: string | null
@@ -359,6 +362,7 @@ export type Database = {
           id?: string
           role?: string | null
           updated_at?: string | null
+          action_permissions?: Json | null
         }
         Relationships: []
       }
@@ -511,6 +515,9 @@ export type Database = {
           id: string
           ingredient_id: string | null
           is_fast_entered: boolean | null
+          is_approved: boolean | null
+          is_transfer_exported: boolean | null
+          is_received: boolean | null
           notes: string | null
           quantity: number
           reference_id: string | null
@@ -525,6 +532,9 @@ export type Database = {
           id?: string
           ingredient_id?: string | null
           is_fast_entered?: boolean | null
+          is_approved?: boolean | null
+          is_transfer_exported?: boolean | null
+          is_received?: boolean | null
           notes?: string | null
           quantity: number
           reference_id?: string | null
@@ -539,6 +549,9 @@ export type Database = {
           id?: string
           ingredient_id?: string | null
           is_fast_entered?: boolean | null
+          is_approved?: boolean | null
+          is_transfer_exported?: boolean | null
+          is_received?: boolean | null
           notes?: string | null
           quantity?: number
           reference_id?: string | null

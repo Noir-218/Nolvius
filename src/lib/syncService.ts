@@ -15,8 +15,8 @@ export const SYNC_TABLES: TableName[] = [
   'products',
   'recipes',
 ];
+
 // Khai báo các cột dùng để giải quyết xung đột (Conflict Resolution) khi Upsert
-// Mặc định Supabase sẽ dùng Khóa chính (id), nhưng một số bảng có Unique Constraint khác
 const ON_CONFLICT_MAP: Partial<Record<TableName, string>> = {
   ingredient_units: 'ingredient_id,unit_name',
 };
@@ -44,7 +44,6 @@ export async function syncDataBetweenFacilities(
     try {
       onProgress({ table, status: 'syncing' });
 
-      // Lấy toàn bộ dữ liệu từ bảng của cơ sở nguồn
       const { data: sourceData, error: fetchError } = await sourceClient
         .from(table)
         .select('*');
@@ -56,10 +55,8 @@ export async function syncDataBetweenFacilities(
         continue;
       }
 
-      // Lấy onConflict nếu có, mặc định là id
       const onConflict = ON_CONFLICT_MAP[table] || 'id';
 
-      // Upsert dữ liệu vào cơ sở đích
       const { error: upsertError } = await destClient
         .from(table)
         .upsert(sourceData as any, { onConflict });
@@ -70,8 +67,88 @@ export async function syncDataBetweenFacilities(
     } catch (error: any) {
       console.error(`Lỗi đồng bộ bảng ${table}:`, error);
       onProgress({ table, status: 'error', message: error.message || 'Lỗi không xác định' });
-      // Nếu một bảng lỗi, có thể ngừng đồng bộ các bảng sau do phụ thuộc khóa ngoại
       throw new Error(`Đồng bộ thất bại tại bảng ${table}: ${error.message}`);
+    }
+  }
+}
+
+// ─────────────────────────────────────────────
+//  SCHEMA SYNC
+// ─────────────────────────────────────────────
+
+export interface ColumnInfo {
+  table_name: string;
+  column_name: string;
+  data_type: string;
+  is_nullable: string;
+  column_default: string | null;
+}
+
+export interface MissingColumn extends ColumnInfo {
+  status: 'pending' | 'applying' | 'added' | 'exists' | 'error';
+  message?: string;
+}
+
+/**
+ * Lấy toàn bộ thông tin schema (danh sách cột) của một cơ sở
+ * Yêu cầu RPC function get_schema_info() đã được deploy trên Supabase project đó
+ */
+export async function getSchemaInfo(
+  facility: { id: string; supabase_url: string; supabase_anon_key: string }
+): Promise<ColumnInfo[]> {
+  const client = getFacilityClient(facility.id, facility.supabase_url, facility.supabase_anon_key);
+  // @ts-ignore: Functions not yet in generated database.types.ts
+  const { data, error } = await client.rpc('get_schema_info');
+  if (error) throw new Error(`Không thể đọc schema từ ${facility.id}: ${error.message}`);
+  return (data || []) as ColumnInfo[];
+}
+
+/**
+ * So sánh schema nguồn vs đích, trả về danh sách cột còn thiếu ở đích
+ */
+export function diffSchemas(sourceSchema: ColumnInfo[], destSchema: ColumnInfo[]): MissingColumn[] {
+  const destSet = new Set(
+    destSchema.map(c => `${c.table_name}::${c.column_name}`)
+  );
+
+  return sourceSchema
+    .filter(c => !destSet.has(`${c.table_name}::${c.column_name}`))
+    .map(c => ({ ...c, status: 'pending' as const }));
+}
+
+/**
+ * Áp dụng danh sách cột thiếu vào cơ sở đích bằng cách gọi RPC apply_column_migration
+ * Yêu cầu RPC function apply_column_migration() đã được deploy trên Supabase project đó
+ */
+export async function applyMissingColumns(
+  destFacility: { id: string; supabase_url: string; supabase_anon_key: string },
+  missingColumns: MissingColumn[],
+  onProgress: (col: MissingColumn) => void
+): Promise<void> {
+  const destClient = getFacilityClient(destFacility.id, destFacility.supabase_url, destFacility.supabase_anon_key);
+
+  for (const col of missingColumns) {
+    onProgress({ ...col, status: 'applying' });
+    try {
+      // @ts-ignore: Functions not yet in generated database.types.ts
+      const { data, error } = await destClient.rpc('apply_column_migration', {
+        p_table_name: col.table_name,
+        p_column_name: col.column_name,
+        p_data_type: col.data_type,
+        p_is_nullable: col.is_nullable,
+        p_column_default: col.column_default,
+      });
+
+      if (error) throw error;
+
+      const result = data as string;
+      onProgress({
+        ...col,
+        status: result === 'EXISTS' ? 'exists' : 'added',
+        message: result === 'EXISTS' ? 'Đã tồn tại' : 'Đã thêm thành công',
+      });
+    } catch (error: any) {
+      onProgress({ ...col, status: 'error', message: error.message });
     }
   }
 }

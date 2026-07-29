@@ -8,6 +8,7 @@ interface AuthContextType {
   role: string | null;
   fullName: string | null;
   avatarUrl: string | null;
+  actionPermissions: Record<string, string> | null;
   loading: boolean;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
@@ -19,6 +20,7 @@ const AuthContext = createContext<AuthContextType>({
   role: null,
   fullName: null,
   avatarUrl: null,
+  actionPermissions: null,
   loading: true,
   signOut: async () => {},
   refreshProfile: async () => {},
@@ -32,12 +34,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [role, setRole] = useState<string | null>(null);
   const [fullName, setFullName] = useState<string | null>(null);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [actionPermissions, setActionPermissions] = useState<Record<string, string> | null>(null);
   const [loading, setLoading] = useState(true);
 
   const fetchProfile = async (userId: string) => {
     const { data, error } = await supabase
       .from('profiles')
-      .select('role, full_name, avatar_url')
+      .select('role, full_name, avatar_url, action_permissions')
       .eq('id', userId)
       .single();
     
@@ -45,10 +48,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setRole(data.role);
       setFullName(data.full_name);
       setAvatarUrl(data.avatar_url);
+      setActionPermissions(data.action_permissions as Record<string, string> | null);
     } else {
       setRole('staff');
       setFullName(null);
       setAvatarUrl(null);
+      setActionPermissions(null);
     }
   };
 
@@ -88,7 +93,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ session, user, role, fullName, avatarUrl, loading, signOut, refreshProfile }}>
+    <AuthContext.Provider value={{ session, user, role, fullName, avatarUrl, actionPermissions, loading, signOut, refreshProfile }}>
       {!loading && children}
     </AuthContext.Provider>
   );

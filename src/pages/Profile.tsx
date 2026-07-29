@@ -73,8 +73,8 @@ export default function Profile() {
       <div className="row justify-content-center">
         <div className="col-12 col-xl-10">
           <div className="mb-4">
-            <h1 className="h3 fw-black text-dark mb-1">CÀI ĐẶT TÀI KHOẢN</h1>
-            <p className="text-secondary small mb-0">Quản lý thông tin hồ sơ và mật khẩu cá nhân.</p>
+            <h1 className="text-2xl font-semibold text-text-main mb-1 capitalize">Cài Đặt Tài Khoản</h1>
+            <p className="text-sm text-text-muted mb-0 mt-2">Quản lý thông tin hồ sơ và mật khẩu cá nhân.</p>
           </div>
 
           {message && (
@@ -87,10 +87,10 @@ export default function Profile() {
           <div className="row g-4">
             {/* profile Column */}
             <div className="col-12 col-lg-6">
-              <div className="card border-0 shadow-sm rounded-4 overflow-hidden h-100">
-                <div className="card-header bg-white border-bottom p-4">
-                  <h5 className="mb-0 fw-black text-dark d-flex align-items-center gap-2">
-                    <UserCircle className="text-primary" size={24} /> Thông Tin Hồ Sơ
+              <div className="card border-0 shadow-sm rounded-2xl bg-warm-white overflow-hidden h-100">
+                <div className="card-header bg-warm-white border-bottom border-soft-gray p-4">
+                  <h5 className="mb-0 font-semibold text-text-main d-flex align-items-center gap-2">
+                    <UserCircle className="text-forest" size={24} /> Thông Tin Hồ Sơ
                   </h5>
                 </div>
                 <div className="card-body p-4">
@@ -159,7 +159,7 @@ export default function Profile() {
 
                   <form onSubmit={handleUpdateName}>
                     <div className="mb-4">
-                      <label className="form-label small fw-black text-secondary text-uppercase tracking-wider">Tên người dùng (Hiển thị)</label>
+                      <label className="form-label text-xs font-semibold text-text-muted uppercase tracking-wider">Tên người dùng (Hiển thị)</label>
                       <div className="input-group">
                         <span className="input-group-text bg-light border-end-0"><User size={18} className="text-muted" /></span>
                         <input 
@@ -176,14 +176,14 @@ export default function Profile() {
                     <button 
                       type="submit" 
                       disabled={updatingName}
-                      className="btn btn-primary w-100 py-3 rounded-pill fw-black text-uppercase tracking-widest shadow-lg d-flex align-items-center justify-content-center gap-2"
+                      className="btn bg-forest hover:bg-forest-dark text-warm-white w-100 py-3 rounded-xl font-semibold shadow-sm d-flex align-items-center justify-content-center gap-2 transition-all"
                     >
                       {updatingName ? (
                         <div className="spinner-border spinner-border-sm" role="status"></div>
                       ) : (
                         <Save size={18} />
                       )}
-                      CẬP NHẬT TÊN HIỂN THỊ
+                      Cập nhật tên hiển thị
                     </button>
                   </form>
                 </div>
@@ -192,10 +192,10 @@ export default function Profile() {
 
             {/* Password Column */}
             <div className="col-12 col-lg-6">
-              <div className="card border-0 shadow-sm rounded-4 overflow-hidden h-100">
-                <div className="card-header bg-white border-bottom p-4">
-                  <h5 className="mb-0 fw-black text-dark d-flex align-items-center gap-2">
-                    <Shield className="text-danger" size={24} /> Bảo Mật & Mật Khẩu
+              <div className="card border-0 shadow-sm rounded-2xl bg-warm-white overflow-hidden h-100">
+                <div className="card-header bg-warm-white border-bottom border-soft-gray p-4">
+                  <h5 className="mb-0 font-semibold text-text-main d-flex align-items-center gap-2">
+                    <Shield className="text-forest" size={24} /> Bảo Mật & Mật Khẩu
                   </h5>
                 </div>
                 <div className="card-body p-4">
@@ -205,7 +205,7 @@ export default function Profile() {
 
                   <form onSubmit={handleUpdatePassword}>
                     <div className="mb-3">
-                      <label className="form-label small fw-black text-secondary text-uppercase tracking-wider">Mật khẩu mới</label>
+                      <label className="form-label text-xs font-semibold text-text-muted uppercase tracking-wider">Mật khẩu mới</label>
                       <div className="input-group">
                         <span className="input-group-text bg-light border-end-0"><Lock size={18} className="text-muted" /></span>
                         <input 
@@ -219,7 +219,7 @@ export default function Profile() {
                     </div>
 
                     <div className="mb-4">
-                      <label className="form-label small fw-black text-secondary text-uppercase tracking-wider">Xác nhận mật khẩu</label>
+                      <label className="form-label text-xs font-semibold text-text-muted uppercase tracking-wider">Xác nhận mật khẩu</label>
                       <div className="input-group">
                         <span className="input-group-text bg-light border-end-0"><Key size={18} className="text-muted" /></span>
                         <input 
@@ -235,14 +235,14 @@ export default function Profile() {
                     <button 
                       type="submit" 
                       disabled={updatingPassword}
-                      className="btn btn-danger w-100 py-3 rounded-pill fw-black text-uppercase tracking-widest shadow-lg d-flex align-items-center justify-content-center gap-2"
+                      className="btn bg-warm-white border border-forest text-forest hover:bg-forest/5 w-100 py-3 rounded-xl font-semibold shadow-sm d-flex align-items-center justify-content-center gap-2 transition-all"
                     >
                       {updatingPassword ? (
                         <div className="spinner-border spinner-border-sm" role="status"></div>
                       ) : (
                         <Lock size={18} />
                       )}
-                      ĐỔI MẬT KHẨU NGAY
+                      Đổi mật khẩu ngay
                     </button>
                   </form>
 

@@ -4,80 +4,486 @@
 
 @layer base {
   body {
-    @apply bg-gray-50 text-gray-800 font-sans antialiased;
+    @apply bg-cream font-sans antialiased;
+    color: #303A34;
+  }
+  
+  /* Title Case and weight 600 instead of Uppercase for headings */
+  h1, h2, h3, h4, h5, h6, .h1, .h2, .h3, .h4, .h5, .h6, .text-uppercase {
+    text-transform: none !important;
+    color: #303A34;
+    font-weight: 600;
+    letter-spacing: -0.01em;
   }
 }
 
 :root {
-  --teal-600: #0d9488;
-  --teal-700: #0f766e;
-  --teal-800: #115e59;
-  --teal-50: #f0fdfa;
-  --teal-100: #ccfbf1;
+  --forest: #4F705B;
+  --forest-light: #9DB5A0;
+  --forest-dark: #365542;
+  
+  --sage: #9DB5A0;
+  --sage-soft: #DDE8D9;
+  
+  --cream: #F3F0E6;
+  --warm-white: #FFFDF7;
+  --soft-gray: #E9E8E1;
+  
+  --coffee: #765548;
+  --terra: #C78368;
+  --ochre: #D3AF65;
+
+  /* ── Text Colors (High Contrast) ── */
+  --text-main: #303A34;
+  --text-secondary: #5F6962;
+  --text-muted: #7B837D;
+  --text-disabled: #A5AAA5;
+
+  /* ── Form Input Tokens ── */
+  --input-bg: #FFFFFF;
+  --input-border: #D0CCC0;
+  --input-border-focus: #4F705B;
+  --input-shadow-focus: rgba(79, 112, 91, 0.14);
+  --input-placeholder: #A0A89E;
+  --input-text: #303A34;
+
+  /* Bootstrap Variable Overrides */
+  --bs-primary: #4F705B;
+  --bs-success: #9DB5A0;
+  --bs-warning: #D3AF65;
+  --bs-danger: #C78368;
+  --bs-info: #778078;
+  --bs-dark: #365542;
+  --bs-body-bg: #F3F0E6;
+  --bs-body-color: #303A34;
+
+  /* Bootstrap text overrides */
+  --bs-secondary-color: #5F6962;
+  --bs-tertiary-color: #7B837D;
+
+  /* Bootstrap form overrides */
+  --bs-border-color: #D0CCC0;
+  --bs-border-radius: 8px;
+  --bs-border-radius-sm: 6px;
+  --bs-border-radius-lg: 12px;
 }
+
+/* ═══════════════════════════════════════════════════════
+   FORM CONTROLS — Global: Create clear hierarchy
+   Background (#F3F0E6) → Card (#FFFDF7) → Input (#FFFFFF)
+   ═══════════════════════════════════════════════════════ */
+
+/* Base form-control */
+.form-control,
+.form-select {
+  background-color: var(--input-bg) !important;
+  border: 1px solid var(--input-border) !important;
+  color: var(--input-text) !important;
+  border-radius: 8px !important;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease !important;
+}
+
+/* Placeholder text — must be visible but not dominant */
+.form-control::placeholder {
+  color: var(--input-placeholder) !important;
+  font-weight: 400 !important;
+  opacity: 1 !important;
+}
+
+/* Focus state — Olive green border + soft shadow */
+.form-control:focus,
+.form-select:focus {
+  border-color: var(--input-border-focus) !important;
+  box-shadow: 0 0 0 3px var(--input-shadow-focus) !important;
+  background-color: #FFFFFF !important;
+  outline: none !important;
+}
+
+/* Disabled state */
+.form-control:disabled,
+.form-select:disabled,
+.form-control[readonly] {
+  background-color: #F0EDE4 !important;
+  border-color: #DDD9CE !important;
+  color: var(--text-muted) !important;
+  cursor: not-allowed;
+}
+
+/* Input group text (prefix/suffix icons) — matches input bg */
+.input-group-text {
+  background-color: var(--input-bg) !important;
+  border-color: var(--input-border) !important;
+  color: var(--text-muted) !important;
+}
+
+/* Input group — seamless connected border */
+.input-group .form-control,
+.input-group .form-select {
+  border-radius: 0 !important;
+}
+.input-group > .input-group-text:first-child {
+  border-radius: 8px 0 0 8px !important;
+}
+.input-group > .form-control:last-child,
+.input-group > .form-select:last-child,
+.input-group > .btn:last-child {
+  border-radius: 0 8px 8px 0 !important;
+}
+.input-group > .form-control:only-child,
+.input-group > .form-select:only-child {
+  border-radius: 8px !important;
+}
+
+/* Pill input groups (rounded-pill / rounded-start-pill, rounded-end-pill) */
+.input-group .rounded-start-pill,
+.input-group .rounded-pill ~ .form-control:first-child,
+.input-group-sm .input-group-text:first-child {
+  border-radius: 50px 0 0 50px !important;
+}
+.input-group .rounded-end-pill {
+  border-radius: 0 50px 50px 0 !important;
+}
+/* Special case for border-0 + shadow inputs (Forecast-style) */
+.input-group .form-control.border-0,
+.input-group .form-select.border-0 {
+  border: none !important;
+  box-shadow: none !important;
+}
+.input-group .form-control.border-0:focus {
+  border: none !important;
+  box-shadow: none !important;
+}
+
+/* ═══════════════════════════════════════════════════════
+   SELECT dropdown — native arrow styling
+   ═══════════════════════════════════════════════════════ */
+.form-select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='none' stroke='%234F705B' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M2 5l6 6 6-6'/%3E%3C/svg%3E") !important;
+  background-repeat: no-repeat !important;
+  background-position: right 10px center !important;
+  background-size: 14px !important;
+  padding-right: 32px !important;
+}
+
+/* ═══════════════════════════════════════════════════════
+   FILTER TOOLBAR — Used by Forecast, Transactions, etc.
+   ═══════════════════════════════════════════════════════ */
+.filter-toolbar {
+  background-color: #F0EDE4;
+  border: 1px solid #DDD9CE;
+  border-radius: 14px;
+  padding: 14px 18px;
+}
+
+/* Bootstrap bg-light in card-body (used for filter areas) */
+.card-body.bg-light,
+.card-header.bg-light {
+  background-color: #F0EDE4 !important;
+  border-bottom: 1px solid #E4E0D5 !important;
+}
+
+/* card-footer bg-light */
+.card-footer.bg-light {
+  background-color: #F7F5EE !important;
+  border-top: 1px solid #E4E0D5 !important;
+}
+
+/* card bg-light for Forecast filter card */
+.card .card-body.p-3.bg-light,
+.card .card-body.p-4.bg-light {
+  background-color: #F0EDE4 !important;
+}
+
+/* ═══════════════════════════════════════════════════════
+   CARD — Warm white surface above cream background
+   ═══════════════════════════════════════════════════════ */
+.card {
+  background-color: #FFFDF7 !important;
+}
+.card.bg-light,
+.card.bg-white {
+  background-color: #FFFDF7 !important;
+}
+
+/* ═══════════════════════════════════════════════════════
+   TABLE: Global overrides for all Bootstrap tables
+   ═══════════════════════════════════════════════════════ */
+.table thead th,
+.table > thead > tr > th,
+thead th {
+  background-color: #F7F7F2 !important;
+  color: #626B64 !important;
+  font-weight: 600 !important;
+  text-transform: none !important;
+  letter-spacing: 0.02em;
+  font-size: 12px;
+  border-bottom: 1px solid #E4E2D8 !important;
+}
+
+/* Remove Bootstrap table-light default gray */
+.table-light, .table-light > td, .table-light > th {
+  background-color: #F7F7F2 !important;
+  color: #626B64 !important;
+}
+
+/* Table body — on warm-white card background */
+.table tbody {
+  background-color: #FFFDF7 !important;
+}
+
+/* Table hover row */
+.table-hover > tbody > tr:hover > td,
+.table-hover > tbody > tr:hover > th,
+.table-hover > tbody > tr:hover {
+  background-color: #F4F7F0 !important;
+}
+
+/* Table body text */
+.table tbody td {
+  color: #303A34;
+}
+
+/* ═══════════════════════════════════════════════════════
+   Bootstrap text color overrides
+   ═══════════════════════════════════════════════════════ */
+.text-secondary, .text-muted {
+  color: #5F6962 !important;
+}
+.text-dark {
+  color: #303A34 !important;
+}
+
+/* ═══════════════════════════════════════════════════════
+   Bootstrap bg-light override for non-card contexts
+   ═══════════════════════════════════════════════════════ */
+.bg-light {
+  background-color: #F0EDE4 !important;
+}
+.bg-white {
+  background-color: #FFFDF7 !important;
+}
+
+/* ═══════════════════════════════════════════════════════
+   STATUS BADGES — Soft Muted with contrast
+   ═══════════════════════════════════════════════════════ */
+
+/* Pending / Chưa xử lý */
+.badge-pending,
+.badge.badge-pending {
+  background-color: #FFF3D6 !important;
+  color: #8A6A25 !important;
+  border: 1px solid #E7CC8A !important;
+}
+
+/* Transaction Type Badges */
+.badge-tx-in {
+  background-color: #D8EDE0 !important;
+  color: #2D6A47 !important;
+  border: 1px solid #A8D5B5 !important;
+}
+.badge-tx-out {
+  background-color: #F5EAD4 !important;
+  color: #7A5A1A !important;
+  border: 1px solid #E7CC8A !important;
+}
+.badge-tx-in-transfer {
+  background-color: #D6EAF0 !important;
+  color: #1E5F74 !important;
+  border: 1px solid #8FBFCF !important;
+}
+.badge-tx-waste {
+  background-color: #F0E8D8 !important;
+  color: #5A4228 !important;
+  border: 1px solid #C8B090 !important;
+}
+.badge-tx-waste-system {
+  background-color: #EDE8E2 !important;
+  color: #5C4A36 !important;
+  border: 1px solid #C8B8A0 !important;
+}
+.badge-tx-sales {
+  background-color: #DDE8D9 !important;
+  color: #3A5E47 !important;
+  border: 1px solid #9DB5A0 !important;
+}
+
+/* ═══════════════════════════════════════════════════════
+   ACTION ICONS
+   ═══════════════════════════════════════════════════════ */
+.action-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+.action-icon-btn:hover {
+  background-color: rgba(0,0,0,0.06);
+}
+.action-icon-view { color: #68736B; }
+.action-icon-edit { color: #4F705B; }
+.action-icon-duplicate { color: #68736B; }
+.action-icon-document { color: #4F705B; }
+.action-icon-delete { color: #C96B63; }
 
 @layer utilities {
   /* Text colors */
-  .text-primary { color: var(--teal-600) !important; }
-  .hover-text-primary:hover { color: var(--teal-700) !important; }
-  .text-primary-emphasis { color: var(--teal-700) !important; }
+  .text-primary { color: var(--forest) !important; }
+  .hover-text-primary:hover { color: var(--forest-dark) !important; }
+  .text-primary-emphasis { color: var(--forest-dark) !important; }
   
   /* Backgrounds */
-  .bg-primary { background-color: var(--teal-600) !important; }
-  .bg-primary-subtle { background-color: var(--teal-50) !important; }
+  .bg-primary { background-color: var(--forest) !important; }
+  .bg-primary-subtle { background-color: var(--sage-soft) !important; }
   
   /* Borders */
-  .border-primary { border-color: var(--teal-600) !important; }
-  .border-primary-subtle { border-color: var(--teal-100) !important; }
+  .border-primary { border-color: var(--forest) !important; }
+  .border-primary-subtle { border-color: var(--sage) !important; }
   
   /* Buttons */
   .btn-primary { 
-    background-color: var(--teal-600) !important; 
-    border-color: var(--teal-600) !important;
-    color: white !important;
+    background-color: var(--forest) !important; 
+    border-color: var(--forest) !important;
+    color: var(--warm-white) !important;
   }
   .btn-primary:hover, .btn-primary:focus, .btn-primary:active {
-    background-color: var(--teal-700) !important;
-    border-color: var(--teal-700) !important;
-    box-shadow: 0 0 0 0.25rem rgba(13, 148, 136, 0.25) !important;
+    background-color: var(--forest-dark) !important;
+    border-color: var(--forest-dark) !important;
+    box-shadow: 0 0 0 0.25rem rgba(79, 112, 91, 0.22) !important;
   }
   
   .btn-outline-primary {
-    color: var(--teal-600) !important;
-    border-color: var(--teal-600) !important;
+    color: var(--forest) !important;
+    border-color: var(--forest) !important;
   }
   .btn-outline-primary:hover, .btn-outline-primary:active {
-    background-color: var(--teal-600) !important;
-    color: white !important;
+    background-color: var(--forest) !important;
+    color: var(--warm-white) !important;
   }
-  
-  /* Form controls */
-  .form-control:focus, .form-select:focus {
-    border-color: var(--teal-600) !important;
-    box-shadow: 0 0 0 0.25rem rgba(13, 148, 136, 0.25) !important;
+
+  .btn-outline-secondary {
+    border-color: #C8C4B8 !important;
+    color: #5F6962 !important;
+  }
+  .btn-outline-secondary:hover {
+    background-color: #EDE9E0 !important;
+    border-color: #B8B4A8 !important;
+    color: #303A34 !important;
   }
   
   /* Tabs / Navigation */
   .nav-pills .nav-link.active, .nav-pills .show > .nav-link {
-    background-color: var(--teal-600) !important;
-    color: white !important;
+    background-color: var(--forest) !important;
+    color: var(--warm-white) !important;
+  }
+  .nav-pills .nav-link:not(.active) {
+    color: #5F6962 !important;
+  }
+  .nav-pills .nav-link:hover:not(.active) {
+    background-color: #E6E3D8 !important;
+    color: #303A34 !important;
   }
   
   .nav-link:hover {
-    color: var(--teal-700) !important;
+    color: var(--forest-dark) !important;
   }
 
   /* Badges */
   .badge.bg-primary {
-    background-color: var(--teal-600) !important;
+    background-color: var(--forest) !important;
   }
+
+  /* Subtle Bootstrap badge overrides — use muted palette */
+  .badge.bg-success-subtle {
+    background-color: #D8EDE0 !important;
+    color: #2D6A47 !important;
+  }
+  .badge.bg-danger-subtle {
+    background-color: #F3E0D8 !important;
+    color: #A0463A !important;
+  }
+  .badge.bg-primary-subtle {
+    background-color: #DDE8D9 !important;
+    color: #365542 !important;
+  }
+  .badge.bg-warning-subtle {
+    background-color: #FFF3D6 !important;
+    color: #8A6A25 !important;
+  }
+  .badge.bg-secondary-subtle {
+    background-color: #ECEAE4 !important;
+    color: #5F6962 !important;
+  }
+
+  /* Boost border colors for subtle badges */
+  .border-success { border-color: #A8D5B5 !important; }
+  .border-danger { border-color: #D49490 !important; }
+  .border-primary { border-color: #9DB5A0 !important; }
+  .border-secondary { border-color: #C2BDB4 !important; }
+  .border-warning { border-color: #E7CC8A !important; }
 }
 
+/* ═══════════════════════════════════════════════════════
+   LIST GROUP — Dropdown suggestions
+   ═══════════════════════════════════════════════════════ */
+.list-group-item {
+  background-color: #FFFDF7 !important;
+  border-color: #E9E6DC !important;
+  color: #303A34 !important;
+}
+.list-group-item-action:hover,
+.list-group-item-action:focus {
+  background-color: #F0EDE4 !important;
+  color: #303A34 !important;
+}
+.list-group-item.active {
+  background-color: #4F705B !important;
+  border-color: #4F705B !important;
+  color: #FFFDF7 !important;
+}
+
+/* ═══════════════════════════════════════════════════════
+   MODAL — Soft warm surfaces
+   ═══════════════════════════════════════════════════════ */
+.modal-content {
+  background-color: #FFFDF7 !important;
+  border: 1px solid #E4E0D5 !important;
+}
+.modal-header {
+  border-bottom: 1px solid #E4E0D5 !important;
+}
+.modal-footer {
+  border-top: 1px solid #E4E0D5 !important;
+}
+
+/* ═══════════════════════════════════════════════════════
+   CHECKBOX & RADIO — Olive green accent
+   ═══════════════════════════════════════════════════════ */
+.form-check-input:checked {
+  background-color: #4F705B !important;
+  border-color: #4F705B !important;
+}
+.form-check-input:focus {
+  box-shadow: 0 0 0 3px rgba(79, 112, 91, 0.18) !important;
+  border-color: #4F705B !important;
+}
+.form-check-input {
+  border-color: #C0BCB2 !important;
+}
+
+/* ═══════════════════════════════════════════════════════
+   SHADOW UTILITY
+   ═══════════════════════════════════════════════════════ */
 .premium-shadow {
-  box-shadow: 0 10px 30px -10px rgba(13, 148, 136, 0.15);
+  box-shadow: 0 4px 20px -2px rgba(79, 112, 91, 0.08);
 }
 
-/* Fix for lucide icons inside primary colored elements if needed */
-.btn-primary .lucide, .nav-link.active .lucide {
-  stroke: currentColor;
+/* Soft card shadow */
+.shadow-sm {
+  box-shadow: 0 1px 6px -1px rgba(50, 70, 55, 0.08), 0 1px 2px rgba(50, 70, 55, 0.04) !important;
 }

@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useFacility } from '../contexts/FacilityContext';
-import { Upload, CheckCircle2, AlertCircle, Calendar, Trash2, Edit2, Save, X, RefreshCw, TrendingDown } from 'lucide-react';
+import { Upload, CheckCircle2, AlertCircle, Calendar, Trash2, Edit2, Save, X, RefreshCw, TrendingDown, Eye } from 'lucide-react';
 import * as xlsx from 'xlsx';
 import { useAuth } from '../contexts/AuthContext';
+import { usePermissions } from '../hooks/usePermissions';
 import { format, parseISO } from 'date-fns';
 
 interface ParsedSale {
@@ -34,6 +35,7 @@ interface SaleRecord {
 
 export default function Sales() {
   const { user } = useAuth();
+  const { canEdit } = usePermissions('sales');
   const { facilityClient } = useFacility();
   const supabase = facilityClient!;
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -599,19 +601,28 @@ export default function Sales() {
           <h1 className="h3 fw-black text-dark mb-1">DOANH SỐ BÁN HÀNG</h1>
           <p className="text-secondary small mb-0">Quản lý dữ liệu bán hàng và khấu trừ nguyên liệu.</p>
         </div>
+        {!canEdit && (
+          <div className="col-auto">
+            <span className="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill px-3 py-2 fw-bold d-flex align-items-center gap-2">
+              <Eye size={14} /> Chỉ xem
+            </span>
+          </div>
+        )}
       </div>
 
       <div className="card border-0 shadow-sm rounded-4 overflow-hidden mb-4">
         <div className="card-header bg-light p-2 border-0">
           <ul className="nav nav-pills nav-fill">
-            <li className="nav-item">
-              <button
-                className={`nav-link rounded-pill fw-bold small transition-all ${activeTab === 'import' ? 'active shadow-sm' : 'text-secondary'}`}
-                onClick={() => setActiveTab('import')}
-              >
-                <Upload size={16} className="me-2" /> Import POS (Excel)
-              </button>
-            </li>
+            {canEdit && (
+              <li className="nav-item">
+                <button
+                  className={`nav-link rounded-pill fw-bold small transition-all ${activeTab === 'import' ? 'active shadow-sm' : 'text-secondary'}`}
+                  onClick={() => setActiveTab('import')}
+                >
+                  <Upload size={16} className="me-2" /> Import POS (Excel)
+                </button>
+              </li>
+            )}
             <li className="nav-item">
               <button
                 className={`nav-link rounded-pill fw-bold small transition-all ${activeTab === 'history' ? 'active shadow-sm' : 'text-secondary'}`}
@@ -629,15 +640,15 @@ export default function Sales() {
               {step === 1 ? (
                 <div className="row justify-content-center">
                   <div className="col-12 col-md-6 text-center">
-                    <div className="card border-0 bg-light rounded-4 p-4 mb-4 shadow-sm border-start border-4 border-primary">
-                      <label className="small fw-black text-muted text-uppercase tracking-widest mb-3">Chọn ngày nhập số bán:</label>
-                      <div className="input-group input-group-lg border-0 shadow-sm rounded-pill overflow-hidden bg-white">
-                        <span className="input-group-text border-0 bg-transparent ps-4"><Calendar className="text-primary" size={24} /></span>
+                    <div className="rounded-3 p-4 mb-4" style={{ background: '#F0EDE4', border: '1px solid #DDD9CE' }}>
+                      <label className="small fw-semibold text-secondary text-uppercase tracking-widest mb-3">Chọn ngày nhập số bán:</label>
+                      <div className="input-group input-group-lg">
+                        <span className="input-group-text"><Calendar size={24} /></span>
                         <input
                           type="date"
                           value={importDate}
                           onChange={e => setImportDate(e.target.value)}
-                          className="form-control border-0 fw-black text-primary ps-0"
+                          className="form-control fw-bold"
                           style={{ fontSize: '1.25rem' }}
                         />
                       </div>
@@ -756,20 +767,23 @@ export default function Sales() {
             </div>
           ) : (
             <div className="py-2">
-              <div className="card border-0 bg-light rounded-4 mb-4 p-3 shadow-sm border-start border-4 border-info">
-                <div className="row align-items-center g-3">
+              <div className="rounded-3 mb-4 p-3" style={{ background: '#F0EDE4', border: '1px solid #DDD9CE' }}>
+                <div className="row g-2 align-items-center">
                   <div className="col-12 col-md-auto">
-                    <div className="d-flex align-items-center gap-2 small fw-bold text-muted text-uppercase tracking-widest ps-2">
-                      <Calendar size={18} className="text-info" /> Xem ngày:
+                    <div className="d-flex align-items-center gap-2 small fw-semibold text-secondary text-uppercase tracking-widest ps-2">
+                      Xem ngày:
                     </div>
                   </div>
-                  <div className="col-12 col-md-3">
-                    <input
-                      type="date"
-                      value={filterDate}
-                      onChange={e => setFilterDate(e.target.value)}
-                      className="form-control border-0 rounded-pill shadow-sm fw-black text-info"
-                    />
+                  <div className="col-12 col-md-4">
+                    <div className="input-group">
+                      <span className="input-group-text"><Calendar size={16} /></span>
+                      <input
+                        type="date"
+                        value={filterDate}
+                        onChange={e => setFilterDate(e.target.value)}
+                        className="form-control"
+                      />
+                    </div>
                   </div>
                 </div>
               </div>

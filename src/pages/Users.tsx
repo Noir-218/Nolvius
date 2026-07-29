@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase'; // Master DB
-import { Search, Mail, Edit3, Check, X, Database, Trash2, Calendar, AlertTriangle, Plus, Landmark, CheckSquare, Square } from 'lucide-react';
+import { Search, Mail, Edit3, Check, X, Database, Trash2, Calendar, AlertTriangle, Plus, Landmark, CheckSquare, Square, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { Navigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
@@ -12,6 +12,7 @@ interface Profile {
   role: string | null;
   avatar_url: string | null;
   created_at: string | null;
+  action_permissions: Record<string, string> | null;
 }
 
 interface Facility {
@@ -72,6 +73,27 @@ export default function Users() {
   const [startMonth, setStartMonth] = useState('');
   const [endMonth, setEndMonth] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // Action Permissions Modal
+  const [isActionPermModalOpen, setIsActionPermModalOpen] = useState(false);
+  const [actionPermUser, setActionPermUser] = useState<Profile | null>(null);
+  const [tempActionPerms, setTempActionPerms] = useState<Record<string, string>>({});
+
+  const PAGE_PERMISSION_DEFS = [
+    { key: 'dashboard', label: 'SOS (Trang chủ)' },
+    { key: 'ingredients', label: 'Nguyên Liệu' },
+    { key: 'products', label: 'Sản Phẩm' },
+    { key: 'recipes', label: 'Công Thức' },
+    { key: 'stock', label: 'Tồn Kho' },
+    { key: 'transactions', label: 'Giao Dịch Kho' },
+    { key: 'sales', label: 'Nhập Bán Hàng' },
+    { key: 'audit', label: 'Kiểm Kê Kho' },
+    { key: 'analysis', label: 'Phân Tích Tiêu Hao' },
+    { key: 'forecast', label: 'Dự Đoán Nhập Hàng' },
+    { key: 'expenses', label: 'Quản Lý Thu Chi' },
+    { key: 'scheduling', label: 'Xếp Lịch Làm Việc' },
+    { key: 'sync', label: 'Đồng Bộ Dữ Liệu' },
+  ];
 
   const fetchData = async () => {
     setLoading(true);
@@ -248,6 +270,33 @@ export default function Users() {
       fetchData();
     } catch (err: any) {
       toast.error('Lỗi phân quyền: ' + err.message);
+    }
+  };
+
+  // Action Permissions handlers
+  const handleOpenActionPermModal = (user: Profile) => {
+    setActionPermUser(user);
+    setTempActionPerms(user.action_permissions || {});
+    setIsActionPermModalOpen(true);
+  };
+
+  const handleSetActionPerm = (pageKey: string, value: string) => {
+    setTempActionPerms(prev => ({ ...prev, [pageKey]: value }));
+  };
+
+  const handleSaveActionPerms = async () => {
+    if (!actionPermUser) return;
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ action_permissions: tempActionPerms })
+        .eq('id', actionPermUser.id);
+      if (error) throw error;
+      toast.success(`Đã cập nhật phân quyền thao tác cho ${actionPermUser.full_name || actionPermUser.email}`);
+      setIsActionPermModalOpen(false);
+      fetchData();
+    } catch (err: any) {
+      toast.error('Lỗi lưu phân quyền: ' + err.message);
     }
   };
 
@@ -546,6 +595,17 @@ export default function Users() {
                             <td className="px-4 py-3 text-end">
                               <div className="d-flex justify-content-end gap-2">
                                 <button 
+                                  onClick={() => handleOpenActionPermModal(p)}
+                                  className={`btn btn-sm rounded-circle p-2 border-0 ${
+                                    p.role === 'master'
+                                      ? 'btn-outline-secondary opacity-50'
+                                      : 'btn-outline-success hover-bg-success-subtle'
+                                  }`}
+                                  title={p.role === 'master' ? 'Master àoàon có toàn quyền' : 'Phân quyền thao tác'}
+                                >
+                                  <ShieldCheck size={18} />
+                                </button>
+                                <button 
                                   onClick={() => handleOpenMappingModal(p)}
                                   className="btn btn-outline-info btn-sm rounded-circle p-2 border-0 hover-bg-info-subtle"
                                   title="Phân quyền cơ sở"
@@ -670,6 +730,99 @@ export default function Users() {
                       <div className="modal-footer border-0 p-4 pt-0 d-flex gap-2">
                         <button type="button" className="btn btn-light rounded-pill flex-grow-1 py-2 fw-bold" onClick={() => setIsMappingModalOpen(false)}>Hủy</button>
                         <button type="button" className="btn btn-primary rounded-pill flex-grow-1 py-2 fw-bold" onClick={handleSaveMapping}>Lưu phân quyền</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ACTION PERMISSIONS MODAL */}
+              {isActionPermModalOpen && actionPermUser && (
+                <div className="modal fade show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.55)' }}>
+                  <div className="modal-dialog modal-dialog-centered modal-lg">
+                    <div className="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
+                      <div className="modal-header border-0 py-3" style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%)' }}>
+                        <div>
+                          <h5 className="modal-title fw-black small text-uppercase tracking-widest text-white mb-0">
+                            <ShieldCheck size={16} className="me-2" />
+                            Phân quyền thao tác trang
+                          </h5>
+                          <div className="text-white-50 small mt-1" style={{ fontSize: '12px' }}>
+                            {actionPermUser.full_name || 'Chưa đặt tên'} — {actionPermUser.email}
+                          </div>
+                        </div>
+                        <button type="button" className="btn-close btn-close-white" onClick={() => setIsActionPermModalOpen(false)}></button>
+                      </div>
+                      <div className="modal-body p-4">
+                        {actionPermUser.role === 'master' ? (
+                          <div className="text-center py-4">
+                            <ShieldCheck size={48} className="text-danger mb-3" />
+                            <h6 className="fw-black text-dark">Tài khoản Master</h6>
+                            <p className="text-secondary small">Tài khoản Master luôn có toàn quyền chỉnh sửa trên tất cả các trang. Không thể giới hạn phân quyền cho tài khoản này.</p>
+                          </div>
+                        ) : (
+                          <>
+                            <p className="text-secondary small mb-3">
+                              Thiết lập quyền cho từng trang. Mặc định là <strong>Chỉnh sửa</strong> nếu chưa cài đặt.
+                            </p>
+                            <div className="table-responsive rounded-3 border">
+                              <table className="table table-hover align-middle mb-0" style={{ fontSize: '13px' }}>
+                                <thead className="table-light">
+                                  <tr>
+                                    <th className="px-4 py-3 border-0 small fw-black text-secondary text-uppercase">Trang</th>
+                                    <th className="px-4 py-3 border-0 small fw-black text-secondary text-uppercase text-center">
+                                      <span className="text-danger">&#128683; Ẩn</span>
+                                    </th>
+                                    <th className="px-4 py-3 border-0 small fw-black text-secondary text-uppercase text-center">
+                                      <span className="text-primary">&#128065; Chỉ Xem</span>
+                                    </th>
+                                    <th className="px-4 py-3 border-0 small fw-black text-secondary text-uppercase text-center">
+                                      <span className="text-success">&#9998; Chỉnh Sửa</span>
+                                    </th>
+                                  </tr>
+                                </thead>
+                                <tbody className="bg-white">
+                                  {PAGE_PERMISSION_DEFS.map(page => {
+                                    const current = tempActionPerms[page.key] || 'edit';
+                                    return (
+                                      <tr key={page.key}>
+                                        <td className="px-4 py-2 fw-bold text-dark">{page.label}</td>
+                                        {(['hide', 'view', 'edit'] as const).map(perm => (
+                                          <td key={perm} className="px-4 py-2 text-center">
+                                            <div
+                                              onClick={() => handleSetActionPerm(page.key, perm)}
+                                              className={`d-inline-flex align-items-center justify-content-center rounded-circle border-2 transition-all ${
+                                                current === perm
+                                                  ? perm === 'hide' ? 'bg-danger border-danger text-white'
+                                                    : perm === 'view' ? 'bg-primary border-primary text-white'
+                                                    : 'bg-success border-success text-white'
+                                                  : 'bg-white border-secondary text-secondary'
+                                              }`}
+                                              style={{ width: '32px', height: '32px', cursor: 'pointer' }}
+                                            >
+                                              {current === perm && <Check size={16} />}
+                                            </div>
+                                          </td>
+                                        ))}
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                            <div className="mt-3 p-3 bg-light rounded-3 border small text-secondary">
+                              <strong>Ẩn:</strong> Trang bị ẩn khỏi menu và không thể truy cập.
+                              &nbsp;&nbsp;<strong>Chỉ Xem:</strong> Chỉ xem dữ liệu, không thể thêm/sửa/xóa.
+                              &nbsp;&nbsp;<strong>Chỉnh Sửa:</strong> Toàn quyền thao tác.
+                            </div>
+                          </>
+                        )}
+                      </div>
+                      <div className="modal-footer border-0 p-4 pt-0 d-flex gap-2">
+                        <button type="button" className="btn btn-light rounded-pill flex-grow-1 py-2 fw-bold" onClick={() => setIsActionPermModalOpen(false)}>Hủy</button>
+                        {actionPermUser.role !== 'master' && (
+                          <button type="button" className="btn btn-dark rounded-pill flex-grow-1 py-2 fw-bold" onClick={handleSaveActionPerms}>Lưu phân quyền</button>
+                        )}
                       </div>
                     </div>
                   </div>

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useFacility } from '../../contexts/FacilityContext';
 import { Plus, Edit2, Trash2, Search } from 'lucide-react';
 import { Modal } from '../ui/Modal';
+import { usePermissions } from '../../hooks/usePermissions';
 
 interface OrderType {
   id: string;
@@ -12,6 +13,7 @@ interface OrderType {
 
 export const OrderTypesTab = () => {
   const { facilityClient: supabase } = useFacility();
+  const { canEdit } = usePermissions('ingredients');
   const [orderTypes, setOrderTypes] = useState<OrderType[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -91,12 +93,14 @@ export const OrderTypesTab = () => {
           </div>
         </div>
         <div className="col-12 col-md-auto">
-          <button
-            onClick={() => openModal()}
-            className="btn btn-primary w-100 d-flex align-items-center justify-content-center gap-2 rounded-3 shadow-sm fw-bold px-4"
-          >
-            <Plus size={18} /> <span>Thêm Loại Đơn</span>
-          </button>
+          {canEdit && (
+            <button
+              onClick={() => openModal()}
+              className="btn btn-primary w-100 d-flex align-items-center justify-content-center gap-2 rounded-3 shadow-sm fw-bold px-4"
+            >
+              <Plus size={18} /> <span>Thêm Loại Đơn</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -121,12 +125,16 @@ export const OrderTypesTab = () => {
                   <td className="px-4 py-3 text-muted small">{t.description || '-'}</td>
                   <td className="px-4 py-3 text-end">
                     <div className="d-flex justify-content-end gap-2">
-                      <button onClick={() => openModal(t)} className="btn btn-sm btn-outline-primary border-0 rounded-circle p-2 hover-shadow">
-                        <Edit2 size={16} />
-                      </button>
-                      <button onClick={() => handleDelete(t.id)} className="btn btn-sm btn-outline-danger border-0 rounded-circle p-2 hover-shadow">
-                        <Trash2 size={16} />
-                      </button>
+                      {canEdit && (
+                        <>
+                          <button onClick={() => openModal(t)} className="btn btn-sm btn-outline-primary border-0 rounded-circle p-2 hover-shadow">
+                            <Edit2 size={16} />
+                          </button>
+                          <button onClick={() => handleDelete(t.id)} className="btn btn-sm btn-outline-danger border-0 rounded-circle p-2 hover-shadow">
+                            <Trash2 size={16} />
+                          </button>
+                        </>
+                      )}
                     </div>
                   </td>
                 </tr>

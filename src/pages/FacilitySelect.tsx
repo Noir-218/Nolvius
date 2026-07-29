@@ -88,7 +88,7 @@ const FacilitySelect: React.FC = () => {
         .facility-card:hover {
           transform: translateY(-4px);
           box-shadow: 0 12px 20px -8px rgba(13, 148, 136, 0.15);
-          border-color: #0d9488 !important;
+          border-color: #557A61 !important;
         }
       `}</style>
       <div className="max-w-2xl w-full space-y-8 bg-white p-8 sm:p-10 rounded-2xl shadow-xl border border-gray-100">

@@ -5,6 +5,7 @@ import { Search, Save, History, PackageOpen, ChevronLeft, ChevronRight, AlertCir
 import * as XLSX from 'xlsx';
 import { TeaAndCakeAuditTab } from '../components/audit/TeaAndCakeAuditTab';
 import { useAuth } from '../contexts/AuthContext';
+import { usePermissions } from '../hooks/usePermissions';
 import { format, parseISO, subDays, startOfMonth } from 'date-fns';
 import toast from 'react-hot-toast';
 
@@ -42,12 +43,14 @@ const unsignedString = (str: string) => {
 
 export default function Audit() {
   const { user, role } = useAuth();
+  const { canEdit: permCanEdit } = usePermissions('audit');
   const { facilityClient: supabase, currentFacility } = useFacility();
   const isStaff = role === 'staff';
   const todayStr = format(new Date(), 'yyyy-MM-dd');
   const [selectedDate, setSelectedDate] = useState<string>(todayStr);
   const isToday = selectedDate === todayStr;
-  const canEdit = !isStaff || isToday;
+  // canEdit: staff can only edit today; non-staff need action_permissions to allow edit
+  const canEdit = (!isStaff || isToday) && permCanEdit;
   const yearMonth = toYearMonth(selectedDate);
   const isFirstOfMonth = selectedDate.slice(8, 10) === '01';
 
@@ -857,16 +860,16 @@ export default function Audit() {
           </div>
         </div>
 
-        <div className="bg-white rounded-4 p-4 mb-6 shadow-sm border border-gray-100">
-           <div className="row g-3">
+        <div className="rounded-3 mb-4 p-3" style={{ background: '#F0EDE4', border: '1px solid #DDD9CE' }}>
+           <div className="row g-2 align-items-center">
               <div className="col-md-8">
-                 <div className="relative">
-                    <input id="main-search-input" type="text" placeholder="Tìm nguyên liệu..." value={search} onChange={e => setSearch(e.target.value)} className="w-full pl-11 pr-4 py-3 bg-gray-50 border-0 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-teal-500/20" />
-                    <Search className="absolute left-4 top-3.5 text-gray-400" size={18} />
-                 </div>
+                <div className="input-group">
+                  <span className="input-group-text"><Search size={16} /></span>
+                  <input id="main-search-input" type="text" placeholder="Tìm nguyên liệu..." value={search} onChange={e => setSearch(e.target.value)} className="form-control" />
+                </div>
               </div>
               <div className="col-md-4">
-                 <select value={selectedCategory} onChange={e => setSelectedCategory(e.target.value)} className="form-select border-0 bg-gray-50 h-[46px] rounded-2xl text-sm font-bold px-4 outline-none focus:ring-2 focus:ring-teal-500/20">
+                 <select value={selectedCategory} onChange={e => setSelectedCategory(e.target.value)} className="form-select">
                     <option value="">Tất cả danh mục</option>
                     {categories.map(c => <option key={c} value={c}>{c}</option>)}
                  </select>
@@ -957,11 +960,11 @@ export default function Audit() {
         </div>
 
         {/* SEARCH BAR */}
-        <div className="bg-white rounded-4 p-4 mb-6 shadow-sm border border-gray-100">
-           <div className="relative">
-              <input type="text" placeholder="Tìm tên nguyên liệu..." value={historySearch} onChange={(e) => setHistorySearch(e.target.value)} className="w-full pl-11 pr-4 py-3 bg-gray-50 border-0 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-teal-500/20 focus:bg-white transition-all outline-none" />
-              <Search className="absolute left-4 top-3.5 text-gray-400" size={18} />
-           </div>
+        <div className="rounded-3 mb-4 p-3" style={{ background: '#F0EDE4', border: '1px solid #DDD9CE' }}>
+          <div className="input-group">
+            <span className="input-group-text"><Search size={16} /></span>
+            <input type="text" placeholder="Tìm tên nguyên liệu..." value={historySearch} onChange={(e) => setHistorySearch(e.target.value)} className="form-control" />
+          </div>
         </div>
 
         {/* DETAILED TABLE */}
@@ -1134,16 +1137,16 @@ export default function Audit() {
         </div>
       )}
 
-      <div className="bg-white rounded-4 p-4 mb-6 shadow-sm border border-gray-100">
-        <div className="row g-3 align-items-center">
+      <div className="rounded-3 mb-4 p-3" style={{ background: '#F0EDE4', border: '1px solid #DDD9CE' }}>
+        <div className="row g-2 align-items-center">
           <div className="col-12 col-md-8">
-             <div className="relative">
-                <input id="main-search-input" type="text" placeholder="Tìm tên nguyên liệu..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-full pl-11 pr-4 py-3 bg-gray-50 border-0 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-teal-500/20 focus:bg-white transition-all outline-none" />
-                <Search className="absolute left-4 top-3.5 text-gray-400" size={18} />
-             </div>
+            <div className="input-group">
+              <span className="input-group-text"><Search size={16} /></span>
+              <input id="main-search-input" type="text" placeholder="Tìm tên nguyên liệu..." value={search} onChange={(e) => setSearch(e.target.value)} className="form-control" />
+            </div>
           </div>
           <div className="col-12 col-md-4">
-            <select value={selectedCategory} onChange={(e) => setSelectedCategory(e.target.value)} className="form-select border-0 bg-gray-50 h-[46px] rounded-2xl text-sm font-bold px-4 focus:ring-2 focus:ring-teal-500/20">
+            <select value={selectedCategory} onChange={(e) => setSelectedCategory(e.target.value)} className="form-select">
               <option value="">Phân loại nguyên liệu</option>
               {categories.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
@@ -1385,7 +1388,7 @@ export default function Audit() {
 
       <style>{`
         .btn-teal-ghost { color: #64748b; font-size: 13px; font-weight: 700; border: none; padding: 8px 16px; }
-        .btn-teal-ghost:hover { background-color: #f0fdfa; color: #0d9488; }
+        .btn-teal-ghost:hover { background-color: #F7F3E8; color: #557A61; }
         input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
       `}</style>
     </div>

@@ -358,17 +358,17 @@ export default function Forecast() {
 
       {/* Period & Filter selector */}
       <div className="card border-0 shadow-sm rounded-4 mb-4 overflow-hidden">
-        <div className="card-body p-3 bg-light">
-          <div className="row align-items-center g-3">
+        <div className="card-body p-3" style={{ background: '#F0EDE4', borderBottom: '1px solid #DDD9CE' }}>
+          <div className="row align-items-center g-2">
             <div className="col-12 col-md-auto">
-              <div className="input-group input-group-sm shadow-sm">
-                <span className="input-group-text bg-white border-0 rounded-start-pill pe-0">
-                  <Search size={14} className="text-muted" />
+              <div className="input-group input-group-sm">
+                <span className="input-group-text">
+                  <Search size={14} />
                 </span>
                 <input
                   type="text"
                   placeholder="Tìm nguyên liệu..."
-                  className="form-control border-0 shadow-none rounded-end-pill ps-2"
+                  className="form-control"
                   value={search}
                   onChange={e => setSearch(e.target.value)}
                   style={{ width: '180px' }}
@@ -376,15 +376,16 @@ export default function Forecast() {
               </div>
             </div>
             <div className="col-12 col-md-auto border-start ps-md-4">
-              <span className="small fw-bold text-muted text-uppercase tracking-wider">Phân tích:</span>
+              <span className="small fw-semibold text-secondary" style={{ fontSize: '11px' }}>Phân tích:</span>
             </div>
             <div className="col-12 col-md-auto">
-              <div className="btn-group btn-group-sm shadow-sm rounded-pill overflow-hidden">
+              <div className="btn-group btn-group-sm rounded-pill overflow-hidden" style={{ border: '1px solid #D0CCC0' }}>
                 {PERIODS.map(p => (
                   <button
                     key={p.days}
                     onClick={() => setPeriodDays(p.days)}
-                    className={`btn px-3 fw-bold ${periodDays === p.days ? 'btn-primary' : 'btn-white bg-white text-secondary border'}`}
+                    className={`btn px-3 fw-semibold ${periodDays === p.days ? 'btn-primary' : ''}`}
+                    style={periodDays !== p.days ? { background: '#FFFFFF', color: '#5F6962', border: 'none' } : {}}
                   >
                     {p.label}
                   </button>
@@ -392,11 +393,11 @@ export default function Forecast() {
               </div>
             </div>
             <div className="col-12 col-md-auto border-start ps-md-4">
-              <span className="small fw-bold text-muted text-uppercase tracking-wider">Loại đơn:</span>
+              <span className="small fw-semibold text-secondary" style={{ fontSize: '11px' }}>Loại đơn:</span>
             </div>
             <div className="col-12 col-md-auto">
               <select 
-                className="form-select form-select-sm rounded-pill shadow-sm border-0 px-3"
+                className="form-select form-select-sm"
                 value={selectedOrderTypeId}
                 onChange={e => setSelectedOrderTypeId(e.target.value)}
                 style={{ minWidth: '160px' }}
@@ -408,16 +409,16 @@ export default function Forecast() {
               </select>
             </div>
             <div className="col-12 col-md-auto border-start ps-md-4">
-              <span className="small fw-bold text-muted text-uppercase tracking-wider">Ngày chốt tồn:</span>
+              <span className="small fw-semibold text-secondary" style={{ fontSize: '11px' }}>Ngày chốt tồn:</span>
             </div>
             <div className="col-12 col-md-auto">
               <div className="input-group input-group-sm">
-                <span className="input-group-text bg-white border-0 shadow-sm rounded-start-pill pe-0">
-                  <Calendar size={14} className="text-secondary" />
+                <span className="input-group-text">
+                  <Calendar size={14} />
                 </span>
                 <input 
                   type="date" 
-                  className="form-control form-control-sm border-0 shadow-sm rounded-end-pill ps-2 fw-bold"
+                  className="form-control form-control-sm fw-semibold"
                   value={stockDate}
                   onChange={e => setStockDate(e.target.value)}
                   max={targetDate}
@@ -425,16 +426,16 @@ export default function Forecast() {
               </div>
             </div>
             <div className="col-12 col-md-auto border-start ps-md-4">
-              <span className="small fw-bold text-muted text-uppercase tracking-wider">Dự trù đến:</span>
+              <span className="small fw-semibold text-secondary" style={{ fontSize: '11px' }}>Dự trù đến:</span>
             </div>
             <div className="col-12 col-md-auto">
               <div className="input-group input-group-sm">
-                <span className="input-group-text bg-white border-0 shadow-sm rounded-start-pill pe-0">
-                  <Calendar size={14} className="text-primary" />
+                <span className="input-group-text" style={{ color: '#4F705B' }}>
+                  <Calendar size={14} />
                 </span>
                 <input 
                   type="date" 
-                  className="form-control form-control-sm border-0 shadow-sm rounded-end-pill ps-2 fw-bold"
+                  className="form-control form-control-sm fw-semibold"
                   value={targetDate}
                   min={stockDate}
                   onChange={e => setTargetDate(e.target.value)}
@@ -461,13 +462,13 @@ export default function Forecast() {
             </div>
           </div>
           <div className="col-12 col-md-4">
-            <div className={`card h-100 border-start border-4 border-danger shadow-sm rounded-4 text-center text-md-start ${filteredData.filter(r => r.daysRemaining !== null && r.daysRemaining <= 3).length > 0 ? 'bg-danger-subtle' : 'bg-white border-0'}`}>
-              <div className="card-body">
+            <div className="card h-100 border-0 shadow-sm rounded-2xl bg-warm-white text-center text-md-start">
+              <div className={`card-body rounded-2xl ${filteredData.filter(r => r.daysRemaining !== null && r.daysRemaining <= 3).length > 0 ? 'bg-[#F3E0D8] border-l-4 border-terra' : 'bg-warm-white border-0'}`}>
                 <div className="d-flex align-items-center gap-2 mb-2 justify-content-center justify-content-md-start">
-                  <AlertTriangle size={16} className={filteredData.filter(r => r.daysRemaining !== null && r.daysRemaining <= 3).length > 0 ? 'text-danger' : 'text-muted'} />
+                  <AlertTriangle size={16} className={filteredData.filter(r => r.daysRemaining !== null && r.daysRemaining <= 3).length > 0 ? 'text-terra' : 'text-muted'} />
                   <span className="small fw-bold text-muted text-uppercase tracking-wider">Cần nhập gấp</span>
                 </div>
-                <h2 className={`display-6 fw-black mb-0 ${filteredData.filter(r => r.daysRemaining !== null && r.daysRemaining <= 3).length > 0 ? 'text-danger' : 'text-dark'}`}>{filteredData.filter(r => r.daysRemaining !== null && r.daysRemaining <= 3).length}</h2>
+                <h2 className={`display-6 fw-black mb-0 ${filteredData.filter(r => r.daysRemaining !== null && r.daysRemaining <= 3).length > 0 ? 'text-terra' : 'text-dark'}`}>{filteredData.filter(r => r.daysRemaining !== null && r.daysRemaining <= 3).length}</h2>
                 <p className="small text-muted mt-1 opacity-75">còn ≤ 3 ngày tồn</p>
               </div>
             </div>
@@ -540,16 +541,16 @@ export default function Forecast() {
 
                   let daysBadge = null;
                   if (item.daysRemaining !== null) {
-                    if (item.daysRemaining <= 0) daysBadge = { text: 'Hết hàng', cls: 'bg-danger text-white border-danger' };
-                    else if (isUrgent) daysBadge = { text: `${item.daysRemaining}d ⚠️`, cls: 'bg-danger text-white border-danger' };
-                    else if (isWarn) daysBadge = { text: `${item.daysRemaining}d`, cls: 'bg-warning text-dark border-warning' };
-                    else daysBadge = { text: `${item.daysRemaining}d`, cls: 'bg-success text-white border-success' };
+                    if (item.daysRemaining <= 0) daysBadge = { text: 'Hết hàng', cls: 'bg-[#F3E0D8] text-terra border-terra/30' };
+                    else if (isUrgent) daysBadge = { text: `${item.daysRemaining}d ⚠️`, cls: 'bg-[#F3E0D8] text-terra border-terra/30' };
+                    else if (isWarn) daysBadge = { text: `${item.daysRemaining}d`, cls: 'bg-[#F5EAD4] text-coffee border-ochre/30' };
+                    else daysBadge = { text: `${item.daysRemaining}d`, cls: 'bg-sage-soft text-forest-dark border-sage/30' };
                   }
 
                   return (
                     <tr
                       key={item.id}
-                      className={isUrgent ? 'table-danger-subtle' : ''}
+                      className={isUrgent ? 'bg-[#F3E0D8]/30' : ''}
                     >
                       <td className="px-3 py-3 fw-bold text-dark">{item.name}</td>
                       <td className="px-3 py-3">

@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useFacility } from '../contexts/FacilityContext';
-import { Plus, Trash2, FileText, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, Trash2, FileText, ChevronLeft, ChevronRight, Eye } from 'lucide-react';
 import { format, subDays, parseISO } from 'date-fns';
 import { useAuth } from '../contexts/AuthContext';
+import { usePermissions } from '../hooks/usePermissions';
 import { Modal } from '../components/ui/Modal';
 import { Navigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
@@ -18,6 +19,7 @@ interface Expense {
 
 export default function Expenses() {
   const { user, role } = useAuth();
+  const { canEdit } = usePermissions('expenses');
   const { facilityClient: supabase } = useFacility();
   
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -95,37 +97,45 @@ export default function Expenses() {
           <h1 className="display-6 fw-black text-dark mb-1">QUẢN LÝ THU CHI</h1>
           <p className="text-secondary fw-medium mb-0">Ghi chép các khoản chi phí vận hành cửa hàng.</p>
         </div>
-        <div className="col-12 col-md-auto">
-          <button
-            onClick={() => setIsModalOpen(true)}
-            className="btn btn-danger btn-lg w-100 px-4 py-2 rounded-3 shadow-sm d-flex align-items-center justify-content-center gap-2"
-            style={{ fontWeight: 900 }}
-          >
-            <Plus size={20} /> Tạo Phiếu Chi
-          </button>
-        </div>
+        {canEdit ? (
+          <div className="col-12 col-md-auto">
+            <button
+              onClick={() => setIsModalOpen(true)}
+              className="btn btn-danger btn-lg w-100 px-4 py-2 rounded-3 shadow-sm d-flex align-items-center justify-content-center gap-2"
+              style={{ fontWeight: 900 }}
+            >
+              <Plus size={20} /> Tạo Phiếu Chi
+            </button>
+          </div>
+        ) : (
+          <div className="col-auto">
+            <span className="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill px-3 py-2 fw-bold d-flex align-items-center gap-2">
+              <Eye size={14} /> Chỉ xem
+            </span>
+          </div>
+        )}
       </div>
 
-      <div className="row g-3 mb-4">
-        <div className="col-12 col-md-auto">
-          <div className="card border-0 shadow-sm rounded-3 overflow-hidden">
-            <div className="card-body p-2 bg-light d-flex align-items-center gap-2">
-               <button onClick={() => setSelectedDate(format(subDays(parseISO(selectedDate), 1), 'yyyy-MM-dd'))} className="btn btn-sm btn-white bg-white border shadow-sm"><ChevronLeft size={18} /></button>
-               <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} className="form-control form-control-sm border-0 bg-transparent fw-bold" style={{ width: '130px' }} />
+      <div className="rounded-3 mb-4 p-3" style={{ background: '#F0EDE4', border: '1px solid #DDD9CE' }}>
+        <div className="row g-2 align-items-center">
+          <div className="col-12 col-md-auto">
+            <div className="input-group">
+               <button onClick={() => setSelectedDate(format(subDays(parseISO(selectedDate), 1), 'yyyy-MM-dd'))} className="btn btn-outline-secondary bg-white"><ChevronLeft size={18} /></button>
+               <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} className="form-control fw-bold text-center" style={{ minWidth: '140px' }} />
                <button onClick={() => {
                  const next = format(new Date(new Date(selectedDate).getTime() + 86400000), 'yyyy-MM-dd');
                  if (next <= today) setSelectedDate(next);
-               }} disabled={selectedDate >= today} className="btn btn-sm btn-white bg-white border shadow-sm disabled:opacity-50"><ChevronRight size={18} /></button>
+               }} disabled={selectedDate >= today} className="btn btn-outline-secondary bg-white"><ChevronRight size={18} /></button>
             </div>
           </div>
-        </div>
-        <div className="col-12 col-md me-md-auto"></div>
-        <div className="col-12 col-md-auto">
-          <div className="card border-0 shadow-sm rounded-3 bg-danger-subtle border-start border-danger border-4">
-             <div className="card-body py-2 px-3 d-flex align-items-center gap-3">
-                <span className="text-xs fw-bold text-danger text-uppercase tracking-wider">TỔNG CHI NGÀY:</span>
-                <span className="h4 mb-0 fw-black text-danger">{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(totalAmount)}</span>
-             </div>
+          <div className="col-12 col-md me-md-auto"></div>
+          <div className="col-12 col-md-auto">
+            <div className="card border-0 shadow-sm rounded-3 bg-danger-subtle border-start border-danger border-4">
+               <div className="card-body py-2 px-3 d-flex align-items-center gap-3">
+                  <span className="text-xs fw-bold text-danger text-uppercase tracking-wider">TỔNG CHI NGÀY:</span>
+                  <span className="h4 mb-0 fw-black text-danger">{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(totalAmount)}</span>
+               </div>
+            </div>
           </div>
         </div>
       </div>
@@ -164,9 +174,11 @@ export default function Expenses() {
                       {new Intl.NumberFormat('vi-VN').format(e.amount)}
                     </td>
                     <td className="px-3 py-3 text-end">
-                      <button onClick={() => handleDelete(e.id)} className="btn btn-sm btn-outline-danger border-0">
-                        <Trash2 size={18} />
-                      </button>
+                      {canEdit && (
+                        <button onClick={() => handleDelete(e.id)} className="btn btn-sm btn-outline-danger border-0">
+                          <Trash2 size={18} />
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))

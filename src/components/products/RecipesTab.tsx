@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useFacility } from '../../contexts/FacilityContext';
 import { Edit2, X, Search } from 'lucide-react';
 import { Modal } from '../ui/Modal';
+import { usePermissions } from '../../hooks/usePermissions';
 
 const unsignedString = (str: string) => {
   return str
@@ -19,6 +20,7 @@ const unsignedString = (str: string) => {
 
 export const RecipesTab = () => {
   const { facilityClient: supabase } = useFacility();
+  const { canEdit } = usePermissions('products');
   const [products, setProducts] = useState<any[]>([]);
   const [ingredients, setIngredients] = useState<any[]>([]);
   const [recipes, setRecipes] = useState<any[]>([]);
@@ -117,28 +119,30 @@ export const RecipesTab = () => {
   return (
     <div className="row g-4">
       <div className="col-12 col-md-4 border-end">
-        <div className="mb-3 space-y-2">
-          <div className="input-group input-group-sm mb-2 shadow-sm">
-            <span className="input-group-text bg-white border-end-0 text-muted"><Search size={14} /></span>
-            <input
-              id="main-search-input"
-              type="text" 
-              placeholder="Tìm kiếm SP..." 
-              value={search} 
-              onChange={e => setSearch(e.target.value)}
-              className="form-control border-start-0 ps-0"
-            />
+        <div className="rounded-3 mb-3 p-3" style={{ background: '#F0EDE4', border: '1px solid #DDD9CE' }}>
+          <div className="d-flex flex-column gap-2">
+            <div className="input-group input-group-sm">
+              <span className="input-group-text"><Search size={14} /></span>
+              <input
+                id="main-search-input"
+                type="text" 
+                placeholder="Tìm kiếm SP..." 
+                value={search} 
+                onChange={e => setSearch(e.target.value)}
+                className="form-control"
+              />
+            </div>
+            <select
+              value={filterCategory}
+              onChange={(e) => setFilterCategory(e.target.value)}
+              className="form-select form-select-sm"
+            >
+              <option value="">Tất cả danh mục SP</option>
+              {productCategories.map(c => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
           </div>
-          <select
-            value={filterCategory}
-            onChange={(e) => setFilterCategory(e.target.value)}
-            className="form-select form-select-sm shadow-sm"
-          >
-            <option value="">Tất cả danh mục SP</option>
-            {productCategories.map(c => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
         </div>
         
         <div className="list-group list-group-flush rounded-3 border shadow-sm overflow-auto" style={{ maxHeight: '600px' }}>
@@ -179,12 +183,14 @@ export const RecipesTab = () => {
                 </h5>
                 <p className="text-secondary small mb-0 mt-1 italic">Các nguyên liệu tiêu hao khi bán 1 sản phẩm này.</p>
               </div>
-              <button 
-                onClick={() => openModal(selectedProduct)} 
-                className="btn btn-primary d-flex align-items-center gap-2 rounded-pill fw-bold shadow-sm px-4 btn-sm"
-              >
-                <Edit2 size={16} /> <span>Chỉnh sửa</span>
-              </button>
+              {canEdit && (
+                <button 
+                  onClick={() => openModal(selectedProduct)} 
+                  className="btn btn-primary d-flex align-items-center gap-2 rounded-pill fw-bold shadow-sm px-4 btn-sm"
+                >
+                  <Edit2 size={16} /> <span>Chỉnh sửa</span>
+                </button>
+              )}
             </div>
             
             <div className="card-body p-0">

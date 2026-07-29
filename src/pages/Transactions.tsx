@@ -5,6 +5,7 @@ import * as XLSX from 'xlsx';
 import { Modal } from '../components/ui/Modal';
 import { format, startOfMonth, parseISO } from 'date-fns';
 import { useAuth } from '../contexts/AuthContext';
+import { usePermissions } from '../hooks/usePermissions';
 import toast from 'react-hot-toast';
 
 
@@ -44,6 +45,7 @@ interface Transaction {
   is_fast_entered: boolean;
   is_approved: boolean;
   is_transfer_exported: boolean;
+  is_received: boolean;
   reference_id: string | null;
   ingredients: { name: string; unit: string } | null;
   suppliers: { name: string } | null;
@@ -58,6 +60,7 @@ interface TransactionGroup {
   is_fast_entered: boolean;
   is_approved: boolean;
   is_transfer_exported: boolean;
+  is_received: boolean;
   notes: string | null;
   supplier_name: string | null;
   branch_name: string | null;
@@ -94,6 +97,7 @@ const emptyLine = (): LineItem => ({
 
 export default function Transactions() {
   const { user } = useAuth();
+  const { canEdit } = usePermissions('transactions');
   const { facilityClient } = useFacility();
   const supabase = facilityClient!;
   
@@ -131,8 +135,9 @@ export default function Transactions() {
   const [txBranch, setTxBranch] = useState<string>('');
   const [txNotes, setTxNotes] = useState<string>('');
   const [txIsFast, setTxIsFast] = useState<boolean>(false);
-  const [txIsApproved, setTxIsApproved] = useState<boolean>(false);
+  const [txIsApproved, setTxIsApproved] = useState<boolean>(false); // Main Status: Done (true) / Pending (false)
   const [txIsExported, setTxIsExported] = useState<boolean>(false);
+  const [txIsReceived, setTxIsReceived] = useState<boolean>(false);
   const [shouldFocusLast, setShouldFocusLast] = useState(false);
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [branches, setBranches] = useState<any[]>([]);
@@ -183,8 +188,8 @@ export default function Transactions() {
     if (filterStatus === 'NOT_FAST') query = query.eq('is_fast_entered', false);
     if (filterStatus === 'APPROVED') query = query.eq('is_approved', true);
     if (filterStatus === 'NOT_APPROVED') query = query.eq('is_approved', false);
-    if (filterStatus === 'EXPORTED') query = query.eq('is_transfer_exported', true);
-    if (filterStatus === 'NOT_EXPORTED') query = query.eq('is_transfer_exported', false);
+    if (filterStatus === 'RECEIVED') query = query.eq('is_received', true);
+    if (filterStatus === 'NOT_RECEIVED') query = query.eq('is_received', false);
 
     const { data } = await query.order('transaction_date', { ascending: false }).order('created_at', { ascending: false });
     if (data) {
@@ -318,6 +323,7 @@ export default function Transactions() {
     setTxIsFast(false);
     setTxIsApproved(false);
     setTxIsExported(false);
+    setTxIsReceived(false);
     setTxRevenue('');
     setLines([emptyLine()]);
     
@@ -358,6 +364,7 @@ export default function Transactions() {
 
         const finalQty = qty * factor;
 
+        const isSalesUsage = txType === 'SALES_USAGE';
         return {
           ingredient_id: l.ingredient_id,
           type: txType,
@@ -367,8 +374,9 @@ export default function Transactions() {
           branch_id: (txType === 'IN_TRANSFER' || txType === 'OUT') && txBranch ? txBranch : null,
           notes: (txType === 'WASTE' && txRevenue) ? `[DT: ${parseFloat(txRevenue).toLocaleString()}] ${txNotes}` : (txNotes || null),
           is_fast_entered: txIsFast,
-          is_approved: txIsApproved,
+          is_approved: isSalesUsage ? true : txIsApproved,
           is_transfer_exported: txIsExported,
+          is_received: txIsReceived,
           reference_id: referenceId,
           created_by: user?.id
         };
@@ -658,6 +666,7 @@ export default function Transactions() {
     setTxIsFast(group.is_fast_entered);
     setTxIsApproved(group.is_approved || false);
     setTxIsExported(group.is_transfer_exported || false);
+    setTxIsReceived(group.is_received || false);
     
     if ((group.type === 'WASTE' || group.type === 'WASTE_SYSTEM') && group.notes) {
       const match = group.notes.match(/^\[DT: ([\d,.]+)\]/);
@@ -700,6 +709,7 @@ export default function Transactions() {
     setTxIsFast(false);
     setTxIsApproved(false);
     setTxIsExported(false);
+    setTxIsReceived(false);
     setLines(group.items.map(item => ({
       id: crypto.randomUUID(),
       ingredient_id: item.ingredient_id,
@@ -929,6 +939,7 @@ export default function Transactions() {
         is_fast_entered: tx.is_fast_entered || false,
         is_approved: tx.is_approved || false,
         is_transfer_exported: tx.is_transfer_exported || false,
+        is_received: tx.is_received || false,
         notes: tx.notes,
         supplier_name: tx.suppliers?.name || null,
         branch_name: tx.branches?.name || null,
@@ -983,14 +994,22 @@ export default function Transactions() {
           <h1 className="h3 fw-black text-dark mb-1">GIAO DỊCH KHO</h1>
           <p className="text-secondary small mb-0">Nhập, xuất, hủy và điều chuyển theo phiếu.</p>
         </div>
-        <div className="col-12 col-md-auto">
-          <button
-            onClick={() => { resetForm(); setIsModalOpen(true); }}
-            className="btn btn-primary w-100 d-flex align-items-center justify-content-center gap-2 rounded-3 shadow-sm fw-bold px-4 py-2"
-          >
-            <Plus size={20} /> <span>Tạo Phiếu Mới</span>
-          </button>
-        </div>
+        {canEdit ? (
+          <div className="col-12 col-md-auto">
+            <button
+              onClick={() => { resetForm(); setIsModalOpen(true); }}
+              className="btn btn-primary w-100 d-flex align-items-center justify-content-center gap-2 rounded-3 shadow-sm fw-bold px-4 py-2"
+            >
+              <Plus size={20} /> <span>Tạo Phiếu Mới</span>
+            </button>
+          </div>
+        ) : (
+          <div className="col-auto">
+            <span className="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill px-3 py-2 fw-bold d-flex align-items-center gap-2">
+              <Eye size={14} /> Chỉ xem
+            </span>
+          </div>
+        )}
       </div>
 
       <div className="card border-0 shadow-sm rounded-4 overflow-hidden mb-4">
@@ -1018,49 +1037,54 @@ export default function Transactions() {
         <div className="card-body p-3 p-md-4">
           {activeTab === 'history' ? (
             <>
-              {/* Filters */}
-              <div className="row g-2 mb-4">
+              {/* Filters — grouped toolbar */}
+              <div className="rounded-3 mb-4 p-3" style={{ background: '#F0EDE4', border: '1px solid #DDD9CE' }}>
+                <div className="row g-2 align-items-end">
                 <div className="col-6 col-md-auto">
-                  <label className="form-label mb-1 text-uppercase fw-black text-secondary" style={{ fontSize: '10px' }}>Từ ngày</label>
-                  <input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)} className="form-control form-control-sm shadow-sm" />
+                  <label className="form-label mb-1 fw-semibold text-secondary" style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Từ ngày</label>
+                  <input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)} className="form-control form-control-sm" />
                 </div>
                 <div className="col-6 col-md-auto">
-                  <label className="form-label mb-1 text-uppercase fw-black text-secondary" style={{ fontSize: '10px' }}>Đến ngày</label>
-                  <input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)} className="form-control form-control-sm shadow-sm" />
+                  <label className="form-label mb-1 fw-semibold text-secondary" style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Đến ngày</label>
+                  <input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)} className="form-control form-control-sm" />
                 </div>
                 <div className="col-6 col-md-auto">
-                  <label className="form-label mb-1 text-uppercase fw-black text-secondary" style={{ fontSize: '10px' }}>Cơ Sở</label>
-                  <select value={filterBranch} onChange={e => setFilterBranch(e.target.value)} className="form-select form-select-sm shadow-sm">
+                  <label className="form-label mb-1 fw-semibold text-secondary" style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Cơ Sở</label>
+                  <select value={filterBranch} onChange={e => setFilterBranch(e.target.value)} className="form-select form-select-sm">
                     <option value="">Tất cả</option>
                     {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                   </select>
                 </div>
                 <div className="col-6 col-md-auto">
-                  <label className="form-label mb-1 text-uppercase fw-black text-secondary" style={{ fontSize: '10px' }}>Loại</label>
-                  <select value={filterType} onChange={e => setFilterType(e.target.value)} className="form-select form-select-sm shadow-sm">
+                  <label className="form-label mb-1 fw-semibold text-secondary" style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Loại</label>
+                  <select value={filterType} onChange={e => setFilterType(e.target.value)} className="form-select form-select-sm">
                     <option value="">Tất cả</option>
                     {Object.entries(TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                   </select>
                 </div>
                 <div className="col-6 col-md-auto">
-                  <label className="form-label mb-1 text-uppercase fw-black text-secondary" style={{ fontSize: '10px' }}>Trạng Thái</label>
-                  <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="form-select form-select-sm shadow-sm">
+                  <label className="form-label mb-1 fw-semibold text-secondary" style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Trạng Thái</label>
+                  <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="form-select form-select-sm">
                     <option value="">Tất cả</option>
+                    <optgroup label="Trạng Thái Chính">
+                      <option value="APPROVED">Done (Hoàn tất)</option>
+                      <option value="NOT_APPROVED">Pending (Đang chờ)</option>
+                    </optgroup>
+                    <optgroup label="Trạng Thái Phụ (Điều Chuyển)">
+                      <option value="RECEIVED">Đã lĩnh</option>
+                      <option value="NOT_RECEIVED">Chưa lĩnh</option>
+                      <option value="EXPORTED">Đã xuất / Đã nhập</option>
+                      <option value="NOT_EXPORTED">Chưa xuất / Chưa nhập</option>
+                    </optgroup>
                     <optgroup label="Chứng từ FAST">
                       <option value="FAST">Đã nhập FAST</option>
                       <option value="NOT_FAST">Chưa nhập FAST</option>
                     </optgroup>
-                    <optgroup label="Phiếu lĩnh (Điều chuyển)">
-                      <option value="APPROVED">Đã duyệt</option>
-                      <option value="NOT_APPROVED">Chưa duyệt</option>
-                      <option value="EXPORTED">Đã làm phiếu xuất</option>
-                      <option value="NOT_EXPORTED">Chưa làm phiếu xuất</option>
-                    </optgroup>
                   </select>
                 </div>
                 <div className="col-12 col-md flex-grow-1 position-relative">
-                  <label className="form-label mb-1 text-uppercase fw-black text-secondary" style={{ fontSize: '10px' }}>Tìm tổng hợp nguyên liệu</label>
-                  <div className="input-group input-group-sm shadow-sm">
+                  <label className="form-label mb-1 fw-semibold text-secondary" style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Tìm tổng hợp nguyên liệu</label>
+                  <div className="input-group input-group-sm">
                     <span className="input-group-text bg-white border-end-0 text-muted"><Search size={14} /></span>
                     <input 
                       id="main-search-input"
@@ -1133,6 +1157,7 @@ export default function Transactions() {
                     </div>
                   )}
                 </div>
+              </div>
               </div>
 
               {/* Summary Card for Combined Search */}
@@ -1210,11 +1235,15 @@ export default function Transactions() {
                     ) : (
                       filtered.map(group => {
                         const isExpanded = expandedGroups.includes(group.id);
-                        const typeLabel = TYPE_LABELS[group.type] || group.type;
-                        const typeClass = group.type === 'IN' ? 'bg-success' :
-                                          group.type === 'OUT' ? 'bg-warning text-dark' :
-                                          group.type === 'WASTE' ? 'bg-danger' :
-                                          'bg-primary';
+                         const typeLabel = TYPE_LABELS[group.type] || group.type;
+                         const typeClass =
+                           group.type === 'IN'           ? 'badge-tx-in' :
+                           group.type === 'OUT'          ? 'badge-tx-out' :
+                           group.type === 'IN_TRANSFER'  ? 'badge-tx-in-transfer' :
+                           group.type === 'WASTE'        ? 'badge-tx-waste' :
+                           group.type === 'WASTE_SYSTEM' ? 'badge-tx-waste-system' :
+                           group.type === 'SALES_USAGE'  ? 'badge-tx-sales' :
+                           'badge-tx-sales';
 
                         return (
                           <React.Fragment key={group.id}>
@@ -1226,44 +1255,34 @@ export default function Transactions() {
                                 {group.transaction_date ? format(parseISO(group.transaction_date), 'dd/MM/yyyy') : '-'}
                               </td>
                               <td className="px-4 py-3">
-                                <span className={`badge ${typeClass} rounded-pill px-3 py-1 fw-black small text-uppercase tracking-wider`}>
+                                <span className={`badge ${typeClass} rounded-pill px-3 py-1 fw-semibold`} style={{ fontSize: '11px' }}>
                                   {typeLabel}
                                 </span>
                               </td>
                               <td className="px-4 py-3 text-center">
                                 <div className="d-flex flex-column align-items-center gap-1">
-                                  {group.type === 'IN_TRANSFER' ? (
-                                    <>
-                                      {group.is_fast_entered ? (
-                                        <span className="badge bg-success-subtle text-success border border-success fw-black small" style={{ fontSize: '9px' }}>LĨNH: OK</span>
-                                      ) : (
-                                        <span className="badge bg-danger-subtle text-danger border border-danger fw-black small" style={{ fontSize: '9px' }}>CHƯA LĨNH</span>
-                                      )}
-                                      {group.is_approved ? (
-                                        <span className="badge bg-primary-subtle text-primary border border-primary fw-black small" style={{ fontSize: '9px' }}>ĐÃ DUYỆT</span>
-                                      ) : (
-                                        <span className="badge bg-secondary-subtle text-secondary border border-secondary fw-black small" style={{ fontSize: '9px' }}>CHƯA DUYỆT</span>
-                                      )}
-                                    </>
-                                  ) : group.type === 'OUT' ? (
-                                    <>
-                                      {group.is_fast_entered ? (
-                                        <span className="badge bg-success-subtle text-success border border-success fw-black small" style={{ fontSize: '9px' }}>NHẬN: OK</span>
-                                      ) : (
-                                        <span className="badge bg-danger-subtle text-danger border border-danger fw-black small" style={{ fontSize: '9px' }}>CHƯA NHẬN</span>
-                                      )}
-                                      {group.is_transfer_exported ? (
-                                        <span className="badge bg-primary-subtle text-primary border border-primary fw-black small" style={{ fontSize: '9px' }}>ĐÃ XUẤT DC</span>
-                                      ) : (
-                                        <span className="badge bg-secondary-subtle text-secondary border border-secondary fw-black small" style={{ fontSize: '9px' }}>CHƯA XUẤT</span>
-                                      )}
-                                    </>
+                                  {/* Main Status */}
+                                  {group.is_approved ? (
+                                    <span className="badge" style={{ fontSize: '9px', background: '#D8EDE0', color: '#2D6A47', border: '1px solid #A8D5B5' }}>DONE</span>
                                   ) : (
-                                    group.is_fast_entered ? (
-                                      <span className="badge bg-success-subtle text-success border border-success fw-black small" style={{ fontSize: '9px' }}>FAST: OK</span>
-                                    ) : (
-                                      <span className="badge bg-danger-subtle text-danger border border-danger fw-black small" style={{ fontSize: '9px' }}>PENDING</span>
-                                    )
+                                    <span className="badge" style={{ fontSize: '9px', background: '#FFF3CD', color: '#856404', border: '1px solid #FFEEBA' }}>PENDING</span>
+                                  )}
+
+                                  {/* Sub Statuses: only show when PENDING and type is transfer */}
+                                  {!group.is_approved && (group.type === 'IN_TRANSFER' || group.type === 'OUT') && (
+                                    <>
+                                      {group.is_received ? (
+                                        <span className="badge" style={{ fontSize: '9px', background: '#DDE8D9', color: '#365542', border: '1px solid #9DB5A0' }}>ĐÃ LĨNH</span>
+                                      ) : (
+                                        <span className="badge" style={{ fontSize: '9px', background: '#E2E3E5', color: '#41464B', border: '1px solid #D3D6D8' }}>CHƯA LĨNH</span>
+                                      )}
+                                      
+                                      {group.is_transfer_exported ? (
+                                        <span className="badge" style={{ fontSize: '9px', background: '#DDE8D9', color: '#365542', border: '1px solid #9DB5A0' }}>{group.type === 'IN_TRANSFER' ? 'ĐÃ NHẬP' : 'ĐÃ XUẤT'}</span>
+                                      ) : (
+                                        <span className="badge" style={{ fontSize: '9px', background: '#E2E3E5', color: '#41464B', border: '1px solid #D3D6D8' }}>{group.type === 'IN_TRANSFER' ? 'CHƯA NHẬP' : 'CHƯA XUẤT'}</span>
+                                      )}
+                                    </>
                                   )}
                                 </div>
                               </td>
@@ -1272,49 +1291,52 @@ export default function Transactions() {
                               </td>
                               <td className="px-4 py-3 text-end" onClick={e => e.stopPropagation()}>
                                 <div className="d-flex justify-content-end gap-1">
-                                  <button onClick={() => toggleGroup(group.id)} className="btn btn-sm btn-outline-secondary border-0 rounded-circle p-2 hover-shadow" title="Xem chi tiết">
+                                  <button onClick={() => toggleGroup(group.id)} className="action-icon-btn action-icon-view" title="Xem chi tiết">
                                     <Eye size={16} />
                                   </button>
-                                  <button onClick={() => startEdit(group)} className="btn btn-sm btn-outline-primary border-0 rounded-circle p-2 hover-shadow" title="Sửa phiếu">
-                                    <Edit2 size={16} />
-                                  </button>
-                                  {(group.type === 'IN' || group.type === 'WASTE' || group.type === 'WASTE_SYSTEM') && (
-                                    <button
-                                      onClick={() => startDuplicate(group)}
-                                      className="btn btn-sm border-0 rounded-circle p-2 hover-shadow"
-                                      style={{ color: '#0d9488', backgroundColor: 'transparent' }}
-                                      title="Chép dữ liệu sang phiếu mới (số lượng = 0)"
-                                    >
-                                      <Copy size={16} />
-                                    </button>
+                                  {canEdit && (
+                                    <>
+                                      <button onClick={() => startEdit(group)} className="action-icon-btn action-icon-edit" title="Sửa phiếu">
+                                        <Edit2 size={16} />
+                                      </button>
+                                      {(group.type === 'IN' || group.type === 'WASTE' || group.type === 'WASTE_SYSTEM') && (
+                                        <button
+                                          onClick={() => startDuplicate(group)}
+                                          className="action-icon-btn action-icon-duplicate"
+                                          title="Chép dữ liệu sang phiếu mới (số lượng = 0)"
+                                        >
+                                          <Copy size={16} />
+                                        </button>
+                                      )}
+                                      {(group.type === 'WASTE' || group.type === 'WASTE_SYSTEM') && (
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            promptExportExcel(group);
+                                          }}
+                                          className="action-icon-btn action-icon-document"
+                                          title="Xuất file Excel"
+                                        >
+                                          <FileSpreadsheet size={16} />
+                                        </button>
+                                      )}
+                                       {group.type === 'IN_TRANSFER' && (
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleExportInTransferExcel(group);
+                                          }}
+                                          className="action-icon-btn action-icon-document"
+                                          title="Xuất file Excel"
+                                        >
+                                          <FileSpreadsheet size={16} />
+                                        </button>
+                                      )}
+                                      <button onClick={() => handleDelete(group)} className="action-icon-btn action-icon-delete" title="Xóa phiếu">
+                                        <Trash2 size={16} />
+                                      </button>
+                                    </>
                                   )}
-                                  {(group.type === 'WASTE' || group.type === 'WASTE_SYSTEM') && (
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        promptExportExcel(group);
-                                      }}
-                                      className="btn btn-sm border-0 rounded-circle p-2 hover-shadow text-success"
-                                      title="Xuất file Excel"
-                                    >
-                                      <FileSpreadsheet size={16} />
-                                    </button>
-                                  )}
-                                  {group.type === 'IN_TRANSFER' && (
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleExportInTransferExcel(group);
-                                      }}
-                                      className="btn btn-sm border-0 rounded-circle p-2 hover-shadow text-success"
-                                      title="Xuất file Excel"
-                                    >
-                                      <FileSpreadsheet size={16} />
-                                    </button>
-                                  )}
-                                  <button onClick={() => handleDelete(group)} className="btn btn-sm btn-outline-danger border-0 rounded-circle p-2 hover-shadow" title="Xóa phiếu">
-                                    <Trash2 size={16} />
-                                  </button>
                                 </div>
                               </td>
                             </tr>
@@ -1667,72 +1689,69 @@ export default function Transactions() {
 
           <div className="col-12">
             <div className="row g-2">
-              {/* Primary status switch (Repurposed is_fast_entered) */}
+              {/* Primary status switch (Done/Pending) */}
               <div className="col-12">
-                <div className={`card p-2 p-md-3 border-0 rounded-3 ${txIsFast ? 'bg-success-subtle border-success border text-success' : 'bg-danger-subtle border-danger border text-danger'}`}>
+                <div className={`card p-2 p-md-3 border-0 rounded-3 ${txIsApproved ? 'bg-success-subtle border-success border text-success' : 'bg-warning-subtle border-warning border text-warning-emphasis'}`}>
                   <div className="form-check form-switch d-flex align-items-center gap-3">
                     <input
                       className="form-check-input"
                       type="checkbox"
                       role="switch"
-                      id="isFastSwitch"
-                      checked={txIsFast}
-                      onChange={e => setTxIsFast(e.target.checked)}
+                      id="isApprovedSwitch"
+                      checked={txIsApproved}
+                      onChange={e => setTxIsApproved(e.target.checked)}
                       style={{ width: '45px', height: '22px' }}
                     />
-                    <label className="form-check-label fw-black text-uppercase tracking-widest small mb-0" htmlFor="isFastSwitch">
-                      {txType === 'IN_TRANSFER' 
-                        ? (txIsFast ? 'ĐÃ LÀM PHIẾU LĨNH VẬT TƯ' : 'CHƯA LÀM PHIẾU LĨNH VẬT TƯ')
-                        : txType === 'OUT'
-                        ? (txIsFast ? 'BÊN NHẬN ĐÃ LÀM PHIẾU LĨNH' : 'BÊN NHẬN CHƯA LÀM PHIẾU LĨNH')
-                        : (txIsFast ? 'ĐÃ NHẬP PHẦN MỀM FAST' : 'CHƯA NHẬP PHẦN MỀM FAST')
-                      }
+                    <label className="form-check-label fw-black text-uppercase tracking-widest small mb-0" htmlFor="isApprovedSwitch">
+                      {txIsApproved ? 'TRẠNG THÁI: HOÀN TẤT (DONE)' : 'TRẠNG THÁI: ĐANG CHỜ (PENDING)'}
                     </label>
                   </div>
                 </div>
               </div>
 
-              {/* Specific switches for Transfer */}
-              {txType === 'IN_TRANSFER' && (
-                <div className="col-12">
-                  <div className={`card p-2 p-md-3 border-0 rounded-3 ${txIsApproved ? 'bg-primary-subtle border-primary border text-primary' : 'bg-secondary-subtle border-secondary border text-secondary'}`}>
-                    <div className="form-check form-switch d-flex align-items-center gap-3">
-                      <input
-                        className="form-check-input"
-                        type="checkbox"
-                        role="switch"
-                        id="isApprovedSwitch"
-                        checked={txIsApproved}
-                        onChange={e => setTxIsApproved(e.target.checked)}
-                        style={{ width: '45px', height: '22px' }}
-                      />
-                      <label className="form-check-label fw-black text-uppercase tracking-widest small mb-0" htmlFor="isApprovedSwitch">
-                        {txIsApproved ? 'ĐÃ DUYỆT PHIẾU NHẬP ĐIỀU CHUYỂN' : 'CHƯA DUYỆT PHIẾU NHẬP ĐIỀU CHUYỂN'}
-                      </label>
+              {/* Sub-statuses: only show when PENDING and type is transfer */}
+              {!txIsApproved && (txType === 'IN_TRANSFER' || txType === 'OUT') && (
+                <>
+                  <div className="col-12">
+                    <div className={`card p-2 p-md-3 border-0 rounded-3 ${txIsReceived ? 'bg-primary-subtle border-primary border text-primary' : 'bg-secondary-subtle border-secondary border text-secondary'}`}>
+                      <div className="form-check form-switch d-flex align-items-center gap-3">
+                        <input
+                          className="form-check-input"
+                          type="checkbox"
+                          role="switch"
+                          id="isReceivedSwitch"
+                          checked={txIsReceived}
+                          onChange={e => setTxIsReceived(e.target.checked)}
+                          style={{ width: '45px', height: '22px' }}
+                        />
+                        <label className="form-check-label fw-black text-uppercase tracking-widest small mb-0" htmlFor="isReceivedSwitch">
+                          {txIsReceived ? 'ĐÃ LĨNH VẬT TƯ' : 'CHƯA LĨNH VẬT TƯ'}
+                        </label>
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
-
-              {txType === 'OUT' && (
-                <div className="col-12">
-                  <div className={`card p-2 p-md-3 border-0 rounded-3 ${txIsExported ? 'bg-primary-subtle border-primary border text-primary' : 'bg-secondary-subtle border-secondary border text-secondary'}`}>
-                    <div className="form-check form-switch d-flex align-items-center gap-3">
-                      <input
-                        className="form-check-input"
-                        type="checkbox"
-                        role="switch"
-                        id="isExportedSwitch"
-                        checked={txIsExported}
-                        onChange={e => setTxIsExported(e.target.checked)}
-                        style={{ width: '45px', height: '22px' }}
-                      />
-                      <label className="form-check-label fw-black text-uppercase tracking-widest small mb-0" htmlFor="isExportedSwitch">
-                        {txIsExported ? 'ĐÀ LÀM PHIẾU XUẤT ĐIỀU CHUYỂN' : 'CHƯA LÀM PHIẾU XUẤT ĐIỀU CHUYỂN'}
-                      </label>
+                  
+                  <div className="col-12">
+                    <div className={`card p-2 p-md-3 border-0 rounded-3 ${txIsExported ? 'bg-primary-subtle border-primary border text-primary' : 'bg-secondary-subtle border-secondary border text-secondary'}`}>
+                      <div className="form-check form-switch d-flex align-items-center gap-3">
+                        <input
+                          className="form-check-input"
+                          type="checkbox"
+                          role="switch"
+                          id="isExportedSwitch"
+                          checked={txIsExported}
+                          onChange={e => setTxIsExported(e.target.checked)}
+                          style={{ width: '45px', height: '22px' }}
+                        />
+                        <label className="form-check-label fw-black text-uppercase tracking-widest small mb-0" htmlFor="isExportedSwitch">
+                          {txType === 'IN_TRANSFER'
+                            ? (txIsExported ? 'ĐÃ NHẬP KHO' : 'CHƯA NHẬP KHO')
+                            : (txIsExported ? 'ĐÃ LÀM PHIẾU XUẤT ĐIỀU CHUYỂN' : 'CHƯA LÀM PHIẾU XUẤT ĐIỀU CHUYỂN')}
+                        </label>
+                      </div>
                     </div>
                   </div>
-                </div>
+                </>
               )}
             </div>
           </div>

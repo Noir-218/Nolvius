@@ -311,19 +311,19 @@ const Scheduling: React.FC = () => {
         </div>
 
         {/* Tab chuyển đổi giữa Xem Tuần và Báo Cáo Tháng */}
-        <div className="flex bg-gray-100 p-1 rounded-xl">
+        <div className="flex bg-soft-gray p-1 rounded-xl">
           <button
             onClick={() => setMainTab('week')}
-            className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${
-              mainTab === 'week' ? 'bg-white text-teal-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+            className={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+              mainTab === 'week' ? 'bg-warm-white text-forest-dark shadow-sm' : 'text-text-muted hover:text-text-main'
             }`}
           >
             Lịch làm việc tuần
           </button>
           <button
             onClick={() => setMainTab('month')}
-            className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${
-              mainTab === 'month' ? 'bg-white text-teal-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+            className={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+              mainTab === 'month' ? 'bg-warm-white text-forest-dark shadow-sm' : 'text-text-muted hover:text-text-main'
             }`}
           >
             Báo cáo tháng
@@ -372,8 +372,8 @@ const Scheduling: React.FC = () => {
                   onClick={() => setLeftPanelTab(tab.key as 'import' | 'config' | 'history')}
                   className={`flex-1 flex items-center justify-center gap-1 py-3 text-xs font-bold transition-colors border-b-2 ${
                     leftPanelTab === tab.key
-                      ? 'text-teal-700 border-teal-600 bg-teal-50/50'
-                      : 'text-gray-400 border-transparent hover:text-gray-600'
+                      ? 'text-forest-dark border-forest bg-forest/5'
+                      : 'text-text-muted border-transparent hover:text-text-main'
                   }`}
                 >
                   {tab.label}
@@ -415,7 +415,7 @@ const Scheduling: React.FC = () => {
               <button
                 onClick={handleRunScheduler}
                 disabled={staffList.length === 0 || isRunning}
-                className="w-full py-3 rounded-xl text-sm font-black flex items-center justify-center gap-2 transition-all bg-gradient-to-r from-teal-600 to-teal-500 hover:from-teal-700 hover:to-teal-600 text-white shadow-lg shadow-teal-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all bg-forest hover:bg-forest-dark text-warm-white shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isRunning ? (
                   <>
@@ -478,17 +478,27 @@ const Scheduling: React.FC = () => {
               {/* Grid or empty state */}
               <div className="flex-1 bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
                 {!schedule ? (
-                  <div className="h-full flex flex-col items-center justify-center gap-4 p-8">
-                    <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-teal-50 to-teal-100 flex items-center justify-center">
-                      <Calendar size={36} className="text-teal-400" />
+                  <div className="h-full flex flex-col items-center justify-center gap-6 p-8 bg-warm-white">
+                    <div className="w-16 h-16 rounded-2xl bg-sage-soft flex items-center justify-center shadow-sm">
+                      <Calendar size={28} className="text-forest" />
                     </div>
-                    <div className="text-center">
-                      <p className="text-lg font-black text-gray-700">Chưa có lịch</p>
-                      <p className="text-sm text-gray-400 mt-1 max-w-xs">
+                    <div className="text-center max-w-sm">
+                      <h3 className="text-lg font-semibold text-text-main mb-2">Bắt đầu xếp lịch</h3>
+                      <p className="text-sm text-text-muted mb-6 leading-relaxed">
                         {staffList.length === 0
-                          ? 'Import file Excel nguyện vọng ca, sau đó bấm "Chạy Thuật Toán"'
-                          : `Đã tải ${staffList.length} nhân viên. Nhấn "Chạy Thuật Toán" để xếp lịch.`}
+                          ? 'Vui lòng import danh sách nguyện vọng ca của nhân viên từ file Excel để hệ thống tính toán.'
+                          : `Hệ thống đã ghi nhận ${staffList.length} nhân viên hợp lệ. Nhấn nút bên dưới để tiến hành xếp lịch tự động.`}
                       </p>
+                      {staffList.length > 0 && (
+                         <button
+                           onClick={handleRunScheduler}
+                           disabled={isRunning}
+                           className="px-6 py-2.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all bg-forest hover:bg-forest-dark text-warm-white mx-auto shadow-sm"
+                         >
+                           {isRunning ? <RefreshCw size={15} className="animate-spin" /> : <Zap size={15} />}
+                           {isRunning ? 'Đang xếp lịch...' : 'Chạy Thuật Toán'}
+                         </button>
+                      )}
                     </div>
                   </div>
                 ) : (
@@ -523,14 +533,14 @@ const Scheduling: React.FC = () => {
                     <button
                       onClick={handleSaveToDb}
                       disabled={isSaving}
-                      className="px-3.5 py-2 text-xs font-bold bg-teal-50 hover:bg-teal-100 text-teal-700 rounded-xl border border-teal-200 flex items-center gap-1.5 transition-all"
+                      className="px-4 py-2 text-xs font-semibold bg-forest text-warm-white hover:bg-forest-dark rounded-xl shadow-sm flex items-center gap-1.5 transition-all"
                     >
                       <Save size={13} />
                       {isSaving ? 'Đang lưu...' : 'Lưu lịch tuần'}
                     </button>
                     <button
                       onClick={handleExportExcel}
-                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors shadow-lg shadow-emerald-100"
+                      className="px-4 py-2 bg-warm-white hover:bg-sage-soft text-forest text-xs font-semibold border border-forest rounded-xl flex items-center gap-1.5 transition-colors shadow-sm"
                     >
                       <Download size={13} />
                       Xuất Excel
@@ -583,14 +593,14 @@ const Scheduling: React.FC = () => {
                 <div className="flex-1 overflow-auto">
                   <table className="w-full text-left border-collapse">
                     <thead>
-                      <tr className="border-b border-gray-200 bg-gray-50">
-                        <th className="py-3 px-4 text-xs font-black text-gray-500 uppercase">Nhân viên</th>
-                        <th className="py-3 px-4 text-xs font-black text-gray-500 uppercase">Chức vụ</th>
-                        <th className="py-3 px-4 text-xs font-black text-gray-500 uppercase text-center">Số tuần công</th>
-                        <th className="py-3 px-4 text-xs font-black text-gray-500 uppercase text-center">Tổng ngày làm</th>
-                        <th className="py-3 px-4 text-xs font-black text-gray-500 uppercase text-center">Giờ công chuẩn</th>
-                        <th className="py-3 px-4 text-xs font-black text-gray-500 uppercase text-center">Giờ làm thực tế</th>
-                        <th className="py-3 px-4 text-xs font-black text-gray-500 uppercase text-right">Chênh lệch thừa/thiếu</th>
+                      <tr style={{ background: '#F7F7F2' }}>
+                        <th className="py-3 px-4 border-b" style={{ fontSize: '11px', fontWeight: 600, color: '#626B64', textTransform: 'none' }}>Nhân viên</th>
+                        <th className="py-3 px-4 border-b" style={{ fontSize: '11px', fontWeight: 600, color: '#626B64', textTransform: 'none' }}>Chức vụ</th>
+                        <th className="py-3 px-4 border-b text-center" style={{ fontSize: '11px', fontWeight: 600, color: '#626B64', textTransform: 'none' }}>Số tuần công</th>
+                        <th className="py-3 px-4 border-b text-center" style={{ fontSize: '11px', fontWeight: 600, color: '#626B64', textTransform: 'none' }}>Tổng ngày làm</th>
+                        <th className="py-3 px-4 border-b text-center" style={{ fontSize: '11px', fontWeight: 600, color: '#626B64', textTransform: 'none' }}>Giờ công chuẩn</th>
+                        <th className="py-3 px-4 border-b text-center" style={{ fontSize: '11px', fontWeight: 600, color: '#626B64', textTransform: 'none' }}>Giờ làm thực tế</th>
+                        <th className="py-3 px-4 border-b text-right" style={{ fontSize: '11px', fontWeight: 600, color: '#626B64', textTransform: 'none' }}>Chênh lệch thừa/thiếu</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -601,26 +611,25 @@ const Scheduling: React.FC = () => {
                         const diffText = diff > 0 ? `+${diff}h` : `${diff}h`;
                         
                         return (
-                          <tr key={s.staff_id} className="border-b border-gray-100 hover:bg-gray-50/50">
-                            <td className="py-3.5 px-4 text-xs font-bold text-gray-800">{s.staff_name}</td>
+                          <tr key={s.staff_id} className="border-b border-gray-100 hover:bg-[#F4F7F0]">
+                            <td className="py-3.5 px-4 text-xs font-semibold" style={{ color: '#303A34' }}>{s.staff_name}</td>
                             <td className="py-3.5 px-4 text-xs font-semibold">
-                              <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
-                                s.staff_role === 'SM' || s.staff_role === 'MB' ? 'bg-purple-100 text-purple-700' :
-                                s.staff_role === 'FT' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
+                                s.staff_role === 'SM' || s.staff_role === 'MB' ? 'bg-[#E8E0F0] text-[#5C3D8F]' :
+                                s.staff_role === 'FT' ? 'bg-[#D6EAF0] text-[#1E5F74]' : 'bg-[#F5EAD4] text-[#7A5A1A]'
                               }`}>
                                 {s.staff_role}
                               </span>
                             </td>
-                            <td className="py-3.5 px-4 text-xs text-center text-gray-600 font-mono">{s.weeks_count}</td>
-                            <td className="py-3.5 px-4 text-xs text-center text-gray-600 font-mono">{s.total_days_worked}</td>
-                            <td className="py-3.5 px-4 text-xs text-center text-gray-600 font-mono">
+                            <td className="py-3.5 px-4 text-xs text-center font-mono" style={{ color: '#5F6962' }}>{s.weeks_count}</td>
+                            <td className="py-3.5 px-4 text-xs text-center font-mono" style={{ color: '#5F6962' }}>{s.total_days_worked}</td>
+                            <td className="py-3.5 px-4 text-xs text-center font-mono" style={{ color: '#5F6962' }}>
                               {isFullTimeGroup ? `${stdHrs}h` : '-'}
                             </td>
-                            <td className="py-3.5 px-4 text-xs text-center font-bold text-gray-800 font-mono">{s.total_hours}h</td>
-                            <td className={`py-3.5 px-4 text-xs text-right font-black font-mono ${
-                              !isFullTimeGroup ? 'text-gray-400' :
-                              diff >= 0 ? 'text-emerald-600' : 'text-red-500'
-                            }`}>
+                            <td className="py-3.5 px-4 text-xs text-center font-bold font-mono" style={{ color: '#303A34' }}>{s.total_hours}h</td>
+                            <td className={`py-3.5 px-4 text-xs text-right font-bold font-mono`} style={{
+                              color: !isFullTimeGroup ? '#A5AAA5' : diff >= 0 ? '#2D6A47' : '#A0463A'
+                            }}>
                               {isFullTimeGroup ? diffText : '-'}
                             </td>
                           </tr>

@@ -4,6 +4,7 @@ import { Search, AlertTriangle, AlertCircle, CheckCircle2, ClipboardList, Calend
 import { format, parseISO, endOfMonth, addDays, subDays } from 'date-fns';
 import { StockAIAssistant } from '../components/StockAIAssistant';
 import { IngredientLossAnalyzer } from '../components/IngredientLossAnalyzer';
+import { usePermissions } from '../hooks/usePermissions';
 import toast from 'react-hot-toast';
 
 const unsignedString = (str: string) =>
@@ -42,6 +43,7 @@ interface OrderType {
 
 const Stock = () => {
   const { facilityClient } = useFacility();
+  const { canEdit } = usePermissions('stock');
   const supabase = facilityClient!;
   const [selectedMonth, setSelectedMonth] = useState<string>(() => format(new Date(), 'yyyy-MM'));
   const [selectedClosingDate, setSelectedClosingDate] = useState<string>(''); // empty = use end of month
@@ -491,15 +493,17 @@ const Stock = () => {
             </div>
           </div>
           
-          <button 
-            onClick={handleSyncData}
-            disabled={syncing}
-            className="btn btn-teal rounded-2xl px-4 py-2.5 fw-bold shadow-sm flex items-center gap-2 hover:-translate-y-0.5 transition-transform shrink-0"
-            title="Tính toán và đồng bộ lại toàn bộ số lượng Tồn lý thuyết trong tháng"
-          >
-            <RefreshCw size={18} className={syncing ? "animate-spin" : ""} />
-            <span className="hidden sm:inline">{syncing ? 'Đang đồng bộ...' : 'Lưu tổng hợp (Đồng bộ)'}</span>
-          </button>
+          {canEdit && (
+            <button 
+              onClick={handleSyncData}
+              disabled={syncing}
+              className="btn btn-teal rounded-2xl px-4 py-2.5 fw-bold shadow-sm flex items-center gap-2 hover:-translate-y-0.5 transition-transform shrink-0"
+              title="Tính toán và đồng bộ lại toàn bộ số lượng Tồn lý thuyết trong tháng"
+            >
+              <RefreshCw size={18} className={syncing ? "animate-spin" : ""} />
+              <span className="hidden sm:inline">{syncing ? 'Đang đồng bộ...' : 'Lưu tổng hợp (Đồng bộ)'}</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -617,39 +621,35 @@ const Stock = () => {
       </div>
 
       {/* FILTERS */}
-      <div className="bg-white rounded-4 p-4 mb-6 shadow-sm border border-gray-100">
-        <div className="row g-3 align-items-center">
+      <div className="rounded-3 mb-4 p-3" style={{ background: '#F0EDE4', border: '1px solid #DDD9CE' }}>
+        <div className="row g-2 align-items-center">
           <div className="col-12 col-sm-6 col-lg-3">
-             <div className="relative">
-                <input
-                  type="month"
-                  value={selectedMonth}
-                  onChange={(e) => { setSelectedMonth(e.target.value); setSelectedClosingDate(''); }}
-                  className="w-full pl-11 pr-4 py-3 bg-gray-50 border-0 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-teal-500/20 focus:bg-white transition-all outline-none"
-                />
-                <Calendar className="absolute left-4 top-3.5 text-gray-400" size={18} />
-             </div>
+            <div className="input-group">
+              <span className="input-group-text"><Calendar size={16} /></span>
+              <input
+                type="month"
+                value={selectedMonth}
+                onChange={(e) => { setSelectedMonth(e.target.value); setSelectedClosingDate(''); }}
+                className="form-control"
+              />
+            </div>
           </div>
           <div className="col-12 col-sm-6 col-lg-3">
-            <div className="relative">
+            <div className="input-group">
+              <span className="input-group-text"><CalendarCheck size={16} className={selectedClosingDate ? 'text-warning' : ''} /></span>
               <input
                 type="date"
                 value={selectedClosingDate}
                 min={closingDateMin}
                 max={closingDateMax}
                 onChange={(e) => setSelectedClosingDate(e.target.value)}
-                className={`w-full pl-11 pr-4 py-3 border-0 rounded-2xl text-sm font-bold focus:ring-2 focus:bg-white transition-all outline-none ${
-                  selectedClosingDate
-                    ? 'bg-amber-50 text-amber-700 focus:ring-amber-500/20'
-                    : 'bg-gray-50 text-gray-500 focus:ring-teal-500/20'
-                }`}
+                className={`form-control ${selectedClosingDate ? 'text-warning border-warning' : ''}`}
                 placeholder="Ngày chốt tồn..."
               />
-              <CalendarCheck className={`absolute left-4 top-3.5 ${selectedClosingDate ? 'text-amber-500' : 'text-gray-400'}`} size={18} />
               {selectedClosingDate && (
                 <button
                   onClick={() => setSelectedClosingDate('')}
-                  className="absolute right-3 top-3 text-amber-400 hover:text-amber-600 font-black text-xs px-1 py-0.5 rounded hover:bg-amber-100 transition-all"
+                  className="btn btn-outline-warning border-start-0"
                   title="Xóa ngày chốt tồn"
                 >
                   ✕
@@ -657,46 +657,46 @@ const Stock = () => {
               )}
             </div>
             {!selectedClosingDate && (
-              <p className="text-[9px] text-gray-400 font-black uppercase tracking-wider mt-1.5 ms-1">Ngày chốt tồn (mặc định: cuối tháng)</p>
+              <p className="text-[9px] text-muted font-bold uppercase tracking-wider mt-1 mb-0 ms-1">Ngày chốt tồn (mặc định: cuối tháng)</p>
             )}
             {selectedClosingDate && (
-              <p className="text-[9px] text-amber-500 font-black uppercase tracking-wider mt-1.5 ms-1">⚡ Chốt tồn đến {effectiveClosingLabel}</p>
+              <p className="text-[9px] text-warning font-bold uppercase tracking-wider mt-1 mb-0 ms-1">⚡ Chốt tồn đến {effectiveClosingLabel}</p>
             )}
           </div>
           <div className="col-12 col-sm-6 col-lg-3">
-             <div className="relative">
-                <input
-                  id="main-search-input"
-                  type="text"
-                  placeholder="Tìm tên nguyên liệu..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="w-full pl-11 pr-4 py-3 bg-gray-50 border-0 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-teal-500/20 focus:bg-white transition-all outline-none"
-                />
-                <Search className="absolute left-4 top-3.5 text-gray-400" size={18} />
-             </div>
+            <div className="input-group">
+              <span className="input-group-text"><Search size={16} /></span>
+              <input
+                id="main-search-input"
+                type="text"
+                placeholder="Tìm tên nguyên liệu..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="form-control"
+              />
+            </div>
           </div>
           <div className="col-12 col-sm-6 col-lg-3">
-            <select
-              value={filterCategory}
-              onChange={(e) => setFilterCategory(e.target.value)}
-              className="form-select border-0 bg-gray-50 h-[46px] rounded-2xl text-sm font-bold px-4 focus:ring-2 focus:ring-teal-500/20"
-            >
-              <option value="">Tất cả danh mục</option>
-              {categories.map((c, idx) => <option key={idx} value={c}>{c}</option>)}
-            </select>
-          </div>
-          <div className="col-12 col-sm-6 col-lg-3">
-            <select
-              value={filterOrderType}
-              onChange={(e) => setFilterOrderType(e.target.value)}
-              className="form-select border-0 bg-gray-50 h-[46px] rounded-2xl text-sm font-bold px-4 focus:ring-2 focus:ring-teal-500/20"
-            >
-              <option value="">Nguồn nhập (Loại đơn)</option>
-              {orderTypes.map(t => (
-                <option key={t.id} value={t.id}>{t.name}</option>
-              ))}
-            </select>
+            <div className="d-flex gap-2">
+              <select
+                value={filterCategory}
+                onChange={(e) => setFilterCategory(e.target.value)}
+                className="form-select"
+              >
+                <option value="">Tất cả danh mục</option>
+                {categories.map((c, idx) => <option key={idx} value={c}>{c}</option>)}
+              </select>
+              <select
+                value={filterOrderType}
+                onChange={(e) => setFilterOrderType(e.target.value)}
+                className="form-select"
+              >
+                <option value="">Nguồn nhập</option>
+                {orderTypes.map(t => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
       </div>

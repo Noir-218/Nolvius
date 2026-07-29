@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Outlet, Navigate, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useFacility } from '../contexts/FacilityContext';
+import { usePermissions } from '../hooks/usePermissions';
 import {
   LogOut,
   Home,
@@ -26,25 +27,25 @@ import {
 import { LoungeBubble } from './LoungeBubble';
 
 const navItems = [
-  { path: '/', label: 'SOS', icon: ShoppingCart, roles: ['master', 'SM', 'SS', 'MB', 'staff'] },
-  { path: '/ingredients', label: 'Nguyên Liệu', icon: Package, roles: ['master', 'SM', 'SS', 'MB'] },
-  { path: '/products', label: 'Sản Phẩm', icon: Coffee, roles: ['master', 'SM', 'SS', 'MB'] },
-  { path: '/recipes', label: 'Công Thức', icon: BookOpen, roles: ['master', 'SM', 'SS', 'MB'] },
-  { path: '/stock', label: 'Tồn Kho', icon: Archive, roles: ['master', 'SM', 'SS', 'MB', 'staff'] },
-  { path: '/transactions', label: 'Giao Dịch Kho', icon: ArrowRightLeft, roles: ['master', 'SM', 'SS', 'MB', 'staff'] },
-  { path: '/sales', label: 'Nhập Bán Hàng', icon: ShoppingCart, roles: ['master', 'SM', 'SS', 'MB', 'staff'] },
-  { path: '/audit', label: 'Kiểm Kê Kho', icon: ClipboardCheck, roles: ['master', 'SM', 'SS', 'MB', 'staff'] },
-  { path: '/analysis', label: 'Phân Tích Tiêu Hao', icon: TrendingUp, roles: ['master', 'SM', 'SS', 'MB'] },
-  { path: '/forecast', label: 'Dự Đoán Nhập Hàng', icon: Calculator, roles: ['master', 'SM', 'SS', 'MB'] },
-  { path: '/expenses', label: 'Quản Lý Thu Chi', icon: Home, roles: ['master'] },
-  { path: '/users', label: 'Quản Trị Người Dùng', icon: UsersIcon, roles: ['master'] },
-  { path: '/scheduling', label: 'Xếp Lịch Làm Việc', icon: CalendarDays, roles: ['master', 'SM', 'MB'] },
-  { path: '/sync', label: 'Đồng Bộ Dữ Liệu', icon: Database, roles: ['master'] },
-
+  { path: '/', label: 'SOS', icon: ShoppingCart, roles: ['master', 'SM', 'SS', 'MB', 'staff'], pageKey: 'dashboard' },
+  { path: '/ingredients', label: 'Nguyên Liệu', icon: Package, roles: ['master', 'SM', 'SS', 'MB'], pageKey: 'ingredients' },
+  { path: '/products', label: 'Sản Phẩm', icon: Coffee, roles: ['master', 'SM', 'SS', 'MB'], pageKey: 'products' },
+  { path: '/recipes', label: 'Công Thức', icon: BookOpen, roles: ['master', 'SM', 'SS', 'MB'], pageKey: 'recipes' },
+  { path: '/stock', label: 'Tồn Kho', icon: Archive, roles: ['master', 'SM', 'SS', 'MB', 'staff'], pageKey: 'stock' },
+  { path: '/transactions', label: 'Giao Dịch Kho', icon: ArrowRightLeft, roles: ['master', 'SM', 'SS', 'MB', 'staff'], pageKey: 'transactions' },
+  { path: '/sales', label: 'Nhập Bán Hàng', icon: ShoppingCart, roles: ['master', 'SM', 'SS', 'MB', 'staff'], pageKey: 'sales' },
+  { path: '/audit', label: 'Kiểm Kê Kho', icon: ClipboardCheck, roles: ['master', 'SM', 'SS', 'MB', 'staff'], pageKey: 'audit' },
+  { path: '/analysis', label: 'Phân Tích Tiêu Hao', icon: TrendingUp, roles: ['master', 'SM', 'SS', 'MB'], pageKey: 'analysis' },
+  { path: '/forecast', label: 'Dự Đoán Nhập Hàng', icon: Calculator, roles: ['master', 'SM', 'SS', 'MB'], pageKey: 'forecast' },
+  { path: '/expenses', label: 'Quản Lý Thu Chi', icon: Home, roles: ['master'], pageKey: 'expenses' },
+  { path: '/users', label: 'Quản Trị Người Dùng', icon: UsersIcon, roles: ['master'], pageKey: 'users' },
+  { path: '/scheduling', label: 'Xếp Lịch Làm Việc', icon: CalendarDays, roles: ['master', 'SM', 'MB'], pageKey: 'scheduling' },
+  { path: '/sync', label: 'Đồng Bộ Dữ Liệu', icon: Database, roles: ['master'], pageKey: 'sync' },
 ];
 
 const Layout = () => {
   const { session, user, role, fullName, avatarUrl, loading, signOut } = useAuth();
+  const { getPagePermission } = usePermissions();
   const { currentFacility, facilities, clearFacility } = useFacility();
   const navigate = useNavigate();
   const location = useLocation();
@@ -109,7 +110,7 @@ const Layout = () => {
   }, []);
 
   if (loading) {
-    return <div className="h-screen flex items-center justify-center bg-gray-50"><div className="text-gray-500">Đang tải dữ liệu...</div></div>;
+    return <div className="h-screen flex items-center justify-center bg-cream"><div className="text-muted">Đang tải dữ liệu...</div></div>;
   }
 
   if (!session) {
@@ -130,17 +131,22 @@ const Layout = () => {
   const toggleSidebar = () => setIsSidebarCollapsed(!isSidebarCollapsed);
 
   const filteredNavItems = navItems.filter(item =>
-    !item.roles || item.roles.includes(role || 'staff')
+    (!item.roles || item.roles.includes(role || 'staff')) &&
+    getPagePermission(item.pageKey) !== 'hide'
   );
 
+  // Guard: if current page is hidden via action_permissions, redirect to home
+  const currentNavItem = navItems.find(item => item.path === location.pathname);
+  if (currentNavItem && getPagePermission(currentNavItem.pageKey) === 'hide') {
+    return <Navigate to="/" replace />;
+  }
+
   return (
-    <div className="flex h-screen bg-gray-50 overflow-hidden font-sans border-0">
-      {/* Global Style Override for underling and premium Feel */}
+    <div className="flex h-screen bg-cream overflow-hidden font-sans border-0">
       <style>{`
         a { text-decoration: none !important; }
         .nav-link { text-decoration: none !important; }
-        .premium-shadow { box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.02) !important; }
-        .active-nav-bg { background-color: #f0f9f9 !important; color: #0d9488 !important; }
+        .active-nav-bg { background-color: #DDE8D9 !important; color: #365542 !important; }
       `}</style>
 
       {/* Mobile Sidebar Overlay */}
@@ -153,14 +159,14 @@ const Layout = () => {
 
       {/* Sidebar */}
       <aside className={`
-        fixed lg:static inset-y-0 left-0 bg-white border-r border-gray-100 flex flex-col shadow-xl lg:shadow-none z-30 transition-all duration-300 ease-in-out
-        ${isSidebarCollapsed ? 'lg:w-20' : 'lg:w-64'}
-        ${isMenuOpen ? 'translate-x-0 w-64' : '-translate-x-full lg:translate-x-0'}
+        fixed lg:static inset-y-0 left-0 bg-forest flex flex-col z-30 transition-all duration-300 ease-in-out border-r border-forest-dark/20
+        ${isSidebarCollapsed ? 'lg:w-20' : 'lg:w-[260px]'}
+        ${isMenuOpen ? 'translate-x-0 w-[260px]' : '-translate-x-full lg:translate-x-0'}
       `}>
-        <div className={`h-16 flex items-center px-6 border-b border-gray-100 bg-teal-800 transition-all duration-300 ${isSidebarCollapsed ? 'lg:px-4 justify-center' : 'justify-between'}`}>
-          <div className="flex items-center gap-2 overflow-hidden">
-            <div className="bg-white/10 p-1.5 rounded-lg shrink-0">
-              <Coffee size={20} className="text-white" />
+        <div className={`h-[60px] flex items-center px-6 border-b border-forest-dark/20 bg-forest transition-all duration-300 ${isSidebarCollapsed ? 'lg:px-4 justify-center' : 'justify-between'}`}>
+          <div className="flex items-center gap-3 overflow-hidden">
+            <div className="bg-forest-dark/30 p-1.5 rounded-xl shrink-0">
+              <Coffee size={20} className="text-warm-white" strokeWidth={1.5} />
             </div>
             <h1 className={`text-sm font-black text-white tracking-widest uppercase truncate transition-all duration-300 ${isSidebarCollapsed ? 'lg:opacity-0 lg:w-0' : 'opacity-100 w-auto'}`}>
               NVC MANAGER
@@ -174,45 +180,76 @@ const Layout = () => {
           </button>
         </div>
 
-        <nav className="flex-1 overflow-y-auto py-6 scrollbar-hide">
-          <p className={`px-6 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-4 transition-all duration-300 whitespace-nowrap overflow-hidden ${isSidebarCollapsed ? 'lg:opacity-0 lg:h-0 lg:mb-0' : 'opacity-100'}`}>
-            Danh mục chính
-          </p>
-          <ul className="space-y-1 px-3 list-none">
-            {filteredNavItems.map((item) => (
+        <nav className="flex-1 overflow-y-auto py-6 scrollbar-hide px-3 space-y-6">
+          <div>
+            <p className={`px-3 text-[11px] font-semibold text-sage/70 uppercase tracking-widest mb-3 transition-all duration-300 whitespace-nowrap overflow-hidden ${isSidebarCollapsed ? 'lg:opacity-0 lg:h-0 lg:mb-0' : 'opacity-100'}`}>
+              Quản lý vận hành
+            </p>
+            <ul className="space-y-1.5 list-none">
+              {filteredNavItems.slice(0, 10).map((item) => (
               <li key={item.path} className="list-none">
                 <NavLink
                   to={item.path}
                   title={isSidebarCollapsed ? item.label : ''}
                   className={({ isActive }) =>
-                    `flex items-center px-4 py-3 rounded-xl transition-all no-underline group ${isSidebarCollapsed ? 'lg:justify-center lg:px-2' : 'space-x-3'} ${isActive
-                      ? 'active-nav-bg font-black'
-                      : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
-                    }`
+                        `flex items-center px-3 py-2.5 rounded-xl transition-all no-underline group ${isSidebarCollapsed ? 'lg:justify-center lg:px-2' : 'space-x-3'} ${isActive
+                          ? 'active-nav-bg font-semibold shadow-sm'
+                          : 'text-sage hover:bg-forest-dark/20 hover:text-warm-white opacity-[0.88] hover:opacity-100'
+                        }`
                   }
                 >
-                  <item.icon size={18} className={`shrink-0 transition-colors ${location.pathname === item.path ? 'text-teal-600' : 'text-gray-400 group-hover:text-gray-700'}`} />
-                  <span className={`text-sm tracking-tight transition-all duration-300 whitespace-nowrap overflow-hidden ${isSidebarCollapsed ? 'lg:opacity-0 lg:w-0' : 'opacity-100 w-auto'}`}>
+                  <item.icon size={18} strokeWidth={1.5} className={`shrink-0 transition-colors ${location.pathname === item.path ? 'text-forest-dark' : 'text-sage group-hover:text-warm-white'}`} />
+                  <span className={`text-[14px] tracking-tight transition-all duration-300 whitespace-nowrap overflow-hidden ${isSidebarCollapsed ? 'lg:opacity-0 lg:w-0' : 'opacity-100 w-auto'}`}>
                     {item.label}
                   </span>
                 </NavLink>
               </li>
             ))}
-          </ul>
+            </ul>
+          </div>
+          
+          {filteredNavItems.length > 10 && (
+            <div>
+              <p className={`px-3 text-[11px] font-semibold text-sage/70 uppercase tracking-widest mb-3 mt-6 transition-all duration-300 whitespace-nowrap overflow-hidden ${isSidebarCollapsed ? 'lg:opacity-0 lg:h-0 lg:mb-0 lg:mt-0' : 'opacity-100'}`}>
+                Hệ thống & Nhân sự
+              </p>
+              <ul className="space-y-1.5 list-none">
+                {filteredNavItems.slice(10).map((item) => (
+                  <li key={item.path} className="list-none">
+                    <NavLink
+                      to={item.path}
+                      title={isSidebarCollapsed ? item.label : ''}
+                      className={({ isActive }) =>
+                        `flex items-center px-3 py-2.5 rounded-xl transition-all no-underline group ${isSidebarCollapsed ? 'lg:justify-center lg:px-2' : 'space-x-3'} ${isActive
+                          ? 'active-nav-bg font-semibold shadow-sm'
+                          : 'text-sage hover:bg-forest-dark/20 hover:text-warm-white opacity-80 hover:opacity-100'
+                        }`
+                      }
+                    >
+                      <item.icon size={18} strokeWidth={1.5} className={`shrink-0 transition-colors ${location.pathname === item.path ? 'text-forest-dark' : 'text-sage group-hover:text-warm-white'}`} />
+                      <span className={`text-[14px] tracking-tight transition-all duration-300 whitespace-nowrap overflow-hidden ${isSidebarCollapsed ? 'lg:opacity-0 lg:w-0' : 'opacity-100 w-auto'}`}>
+                        {item.label}
+                      </span>
+                    </NavLink>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </nav>
 
-        <div className={`p-4 bg-gray-50/50 mt-auto border-t border-gray-100 transition-all duration-300 ${isSidebarCollapsed ? 'lg:p-2 lg:flex lg:flex-col lg:items-center' : ''}`}>
+        <div className={`p-4 bg-forest-dark/30 mt-auto border-t border-forest-dark/20 transition-all duration-300 ${isSidebarCollapsed ? 'lg:p-2 lg:flex lg:flex-col lg:items-center' : ''}`}>
           <NavLink
             to="/profile"
             title={isSidebarCollapsed ? 'Hồ sơ của tôi' : ''}
             className={({ isActive }) =>
               `flex items-center rounded-xl transition-all no-underline mb-2 group ${isSidebarCollapsed ? 'lg:justify-center lg:w-10 lg:h-10 lg:p-0' : 'px-4 py-3 space-x-3'} ${isActive
-                ? 'active-nav-bg font-black'
-                : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900'
+                ? 'active-nav-bg font-bold'
+                : 'text-sage-light hover:bg-forest-light/20 hover:text-warm-white'
               }`
             }
           >
-            <UsersIcon size={18} className="text-gray-400 group-hover:text-gray-700 shrink-0" />
+            <UsersIcon size={18} strokeWidth={1.5} className="text-sage group-hover:text-warm-white shrink-0" />
             <span className={`text-sm tracking-tight transition-all duration-300 whitespace-nowrap overflow-hidden ${isSidebarCollapsed ? 'lg:opacity-0 lg:w-0' : 'opacity-100 w-auto'}`}>
               Hồ sơ của tôi
             </span>
@@ -220,9 +257,9 @@ const Layout = () => {
           <button
             onClick={handleLogout}
             title={isSidebarCollapsed ? 'Đăng xuất' : ''}
-            className={`flex items-center rounded-xl text-red-600 hover:bg-red-50 transition-all border-0 ${isSidebarCollapsed ? 'lg:justify-center lg:w-10 lg:h-10 lg:p-0' : 'px-4 py-3 space-x-3 w-full'}`}
+            className={`flex items-center rounded-xl text-rose hover:bg-rose/10 transition-all border-0 ${isSidebarCollapsed ? 'lg:justify-center lg:w-10 lg:h-10 lg:p-0' : 'px-4 py-3 space-x-3 w-full'}`}
           >
-            <LogOut size={18} className="shrink-0" />
+            <LogOut size={18} strokeWidth={1.5} className="shrink-0" />
             <span className={`text-sm font-bold transition-all duration-300 whitespace-nowrap overflow-hidden ${isSidebarCollapsed ? 'lg:opacity-0 lg:w-0' : 'opacity-100 w-auto'}`}>
               Đăng xuất
             </span>
@@ -231,46 +268,45 @@ const Layout = () => {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col h-screen overflow-hidden w-full bg-[#FAFAFA]">
+      <main className="flex-1 flex flex-col h-screen overflow-hidden w-full bg-cream">
         {/* Header */}
-        <header className="h-16 bg-white border-b border-gray-100 flex items-center justify-between px-6 z-10">
+        <header className="h-[60px] bg-warm-white border-b border-soft-gray flex items-center justify-between px-6 z-10">
           <div className="flex items-center gap-4">
             <button
               onClick={toggleMenu}
-              className="lg:hidden p-2 text-gray-400 hover:bg-gray-100 rounded-xl transition-colors"
+              className="lg:hidden p-2 text-text-muted hover:bg-soft-gray rounded-xl transition-colors"
             >
-              <Menu size={22} />
+              <Menu size={22} strokeWidth={1.5} />
             </button>
             <button
               onClick={toggleSidebar}
-              className="hidden lg:flex p-2 text-gray-400 hover:bg-gray-100 rounded-xl transition-colors"
+              className="hidden lg:flex p-2 text-text-muted hover:bg-soft-gray rounded-xl transition-colors"
               title={isSidebarCollapsed ? "Mở rộng sidebar" : "Thu gọn sidebar"}
             >
-              <Menu size={20} />
+              <Menu size={20} strokeWidth={1.5} />
             </button>
             <div>
-              <h2 className="text-lg font-black text-gray-800 tracking-tight leading-none">
+              <h2 className="text-xl font-semibold text-text-main capitalize tracking-tight leading-none">
                 {navItems.find(item => item.path === location.pathname)?.label || 'Quản Lý'}
               </h2>
-              <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mt-0.5">Coffee Management System</p>
             </div>
           </div>
 
           <div className="flex items-center gap-3">
             {/* Facility Indicator / Switcher */}
             {currentFacility && (
-              <div className="flex items-center gap-2 bg-teal-50 border border-teal-100 px-3 py-1.5 rounded-xl premium-shadow">
-                <Building size={16} className="text-teal-600 shrink-0" />
-                <span className="text-xs font-black text-teal-800 uppercase tracking-wide truncate max-w-[120px] sm:max-w-[200px]">
+              <div className="flex items-center gap-2 bg-sage/10 border border-sage/30 px-3 py-1.5 rounded-xl shadow-soft">
+                <Building size={16} strokeWidth={1.5} className="text-forest shrink-0" />
+                <span className="text-xs font-bold text-forest-dark uppercase tracking-wide truncate max-w-[120px] sm:max-w-[200px]">
                   {currentFacility.name}
                 </span>
                 {(facilities.length > 1 || role === 'master') && (
                   <button
                     onClick={() => navigate('/select-facility')}
-                    className="p-1 hover:bg-teal-100 rounded-lg text-teal-600 transition-colors border-0 bg-transparent flex items-center justify-center"
+                    className="p-1 hover:bg-sage/20 rounded-lg text-forest transition-colors border-0 bg-transparent flex items-center justify-center"
                     title="Đổi cơ sở hoạt động"
                   >
-                    <RefreshCw size={12} className="animate-hover" />
+                    <RefreshCw size={12} strokeWidth={1.5} className="animate-hover" />
                   </button>
                 )}
               </div>
@@ -278,32 +314,33 @@ const Layout = () => {
 
             <button
               onClick={() => setIsLoungeOpen(!isLoungeOpen)}
-              className={`w-10 h-10 flex items-center justify-center rounded-2xl border cursor-pointer transition-all premium-shadow group ${isLoungeOpen
-                ? 'bg-amber-500 border-amber-400 shadow-amber-200 shadow-lg'
-                : 'bg-gray-50 border-gray-100 hover:border-amber-300 hover:bg-amber-50/40'
+              className={`w-10 h-10 flex items-center justify-center rounded-xl border cursor-pointer transition-all shadow-soft group ${isLoungeOpen
+                ? 'bg-ochre border-ochre shadow-ochre/30 shadow-lg'
+                : 'bg-warm-white border-sage/20 hover:border-ochre/50 hover:bg-ochre/10'
                 }`}
               title="Góc Chill Staff"
             >
               <Sparkles
                 size={18}
-                className={`transition-all duration-300 ${isLoungeOpen ? 'text-white rotate-12' : 'text-gray-400 group-hover:text-amber-500'
+                strokeWidth={1.5}
+                className={`transition-all duration-300 ${isLoungeOpen ? 'text-white rotate-12' : 'text-muted group-hover:text-ochre'
                   }`}
               />
             </button>
 
             <div
               onClick={() => navigate('/profile')}
-              className="flex items-center bg-gray-50 px-4 py-2 rounded-2xl border border-gray-100 hover:border-teal-200 hover:bg-teal-50/30 cursor-pointer transition-all premium-shadow"
+              className="flex items-center bg-warm-white px-4 py-2 rounded-xl border border-sage/20 hover:border-forest/30 hover:bg-forest/5 cursor-pointer transition-all shadow-soft"
             >
               <div className="flex flex-col text-right mr-3">
-                <span className="text-[9px] font-black text-teal-600 uppercase tracking-widest leading-none mb-1">
+                <span className="text-[9px] font-bold text-forest uppercase tracking-widest leading-none mb-1">
                   XIN CHÀO!
                 </span>
-                <span className="text-xs font-black text-gray-800 hidden sm:inline max-w-[150px] truncate leading-none">
+                <span className="text-xs font-bold text-coffee hidden sm:inline max-w-[150px] truncate leading-none">
                   {fullName || user?.email?.split('@')[0] || 'User'}
                 </span>
               </div>
-              <div className="w-9 h-9 rounded-xl bg-teal-600 shadow-lg shadow-teal-200 flex items-center justify-center text-white text-sm font-black uppercase ring-2 ring-white overflow-hidden">
+              <div className="w-9 h-9 rounded-xl bg-forest shadow-soft shadow-forest/20 flex items-center justify-center text-warm-white text-sm font-bold uppercase ring-2 ring-warm-white overflow-hidden">
                 {avatarUrl ? (
                   <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
                 ) : (
@@ -318,7 +355,7 @@ const Layout = () => {
         <div
           id="main-content-area"
           tabIndex={-1}
-          className="flex-1 overflow-y-auto p-4 sm:p-6 bg-gray-50/50 outline-none"
+          className="flex-1 overflow-y-auto p-4 sm:p-6 bg-cream outline-none"
         >
           <div className="max-w-7xl mx-auto">
             <Outlet />

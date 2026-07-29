@@ -4,6 +4,7 @@ import { Plus, Edit2, Trash2, Search, Upload, Download } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import * as xlsx from 'xlsx';
 import type { Database } from '../../types/database.types';
+import { usePermissions } from '../../hooks/usePermissions';
 
 type Ingredient = Database['public']['Tables']['ingredients']['Row'] & {
   ingredient_categories: { name: string } | null;
@@ -12,6 +13,7 @@ type Ingredient = Database['public']['Tables']['ingredients']['Row'] & {
 
 export const IngredientsTab = () => {
   const { facilityClient: supabase } = useFacility();
+  const { canEdit } = usePermissions('ingredients');
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
   const [categories, setCategories] = useState<{ id: string, name: string }[]>([]);
   const [orderTypes, setOrderTypes] = useState<{ id: string, name: string }[]>([]);
@@ -386,18 +388,22 @@ export const IngredientsTab = () => {
           >
             <Download size={18} /> <span className="d-none d-sm-inline">Tải File Mẫu</span>
           </button>
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="btn btn-outline-success flex-grow-1 d-flex align-items-center justify-content-center gap-2 rounded-3 shadow-sm"
-          >
-            <Upload size={18} /> <span className="d-none d-sm-inline">Import Excel</span>
-          </button>
-          <button
-            onClick={() => openModal()}
-            className="btn btn-primary flex-grow-1 d-flex align-items-center justify-content-center gap-2 rounded-3 shadow-sm fw-bold"
-          >
-            <Plus size={18} /> <span>Thêm Mới</span>
-          </button>
+          {canEdit && (
+            <>
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="btn btn-outline-success flex-grow-1 d-flex align-items-center justify-content-center gap-2 rounded-3 shadow-sm"
+              >
+                <Upload size={18} /> <span className="d-none d-sm-inline">Import Excel</span>
+              </button>
+              <button
+                onClick={() => openModal()}
+                className="btn btn-primary flex-grow-1 d-flex align-items-center justify-content-center gap-2 rounded-3 shadow-sm fw-bold"
+              >
+                <Plus size={18} /> <span>Thêm Mới</span>
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -454,12 +460,16 @@ export const IngredientsTab = () => {
                   <td className="px-4 py-3 text-center small text-secondary">{ing.unit}</td>
                   <td className="px-4 py-3">
                     <div className="d-flex justify-content-end gap-2 text-end">
-                      <button onClick={() => openModal(ing)} className="btn btn-sm btn-outline-primary border-0 rounded-circle p-2 hover-shadow">
-                        <Edit2 size={16} />
-                      </button>
-                      <button onClick={() => handleDelete(ing.id)} className="btn btn-sm btn-outline-danger border-0 rounded-circle p-2 hover-shadow">
-                        <Trash2 size={16} />
-                      </button>
+                      {canEdit && (
+                        <>
+                          <button onClick={() => openModal(ing)} className="btn btn-sm btn-outline-primary border-0 rounded-circle p-2 hover-shadow">
+                            <Edit2 size={16} />
+                          </button>
+                          <button onClick={() => handleDelete(ing.id)} className="btn btn-sm btn-outline-danger border-0 rounded-circle p-2 hover-shadow">
+                            <Trash2 size={16} />
+                          </button>
+                        </>
+                      )}
                     </div>
                   </td>
                 </tr>
