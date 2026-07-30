@@ -1361,7 +1361,7 @@ export default function Transactions() {
                                         </tr>
                                       </thead>
                                       <tbody>
-                                        {group.items.map(item => (
+                                        {group.items.filter(item => item.ingredient_id).map(item => (
                                           <tr key={item.id}>
                                             <td className="px-4 py-2 fw-bold text-dark">{item.ingredients?.name}</td>
                                             <td className={`px-4 py-2 text-end fw-black ${item.quantity > 0 ? 'text-success' : 'text-danger'}`}>
