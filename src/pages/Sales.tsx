@@ -524,13 +524,15 @@ export default function Sales() {
     });
 
     // 4. Tạo các giao dịch stock_transactions loại SALES_USAGE
+    const referenceId = crypto.randomUUID();
     const txInserts = Object.entries(finalUsage).map(([ingId, qty]) => ({
       ingredient_id: ingId,
       type: 'SALES_USAGE',
       quantity: -qty,
       transaction_date: date,
       notes: `Đồng bộ tiêu hao ngày ${date} (Tự động FIFO)`,
-      created_by: user?.id
+      created_by: user?.id,
+      reference_id: referenceId
     }));
 
     if (revenueToSave !== undefined && revenueToSave > 0) {
@@ -540,7 +542,8 @@ export default function Sales() {
         quantity: 0,
         transaction_date: date,
         notes: `[REVENUE: ${revenueToSave}]`,
-        created_by: user?.id
+        created_by: user?.id,
+        reference_id: referenceId
       });
       localStorage.setItem(`daily_revenue_${date}`, revenueToSave.toString());
     }
