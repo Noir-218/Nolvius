@@ -958,13 +958,16 @@ export default function Transactions() {
     groupsByRef[ref].items.push(tx);
   });
 
+  // Ẩn các nhóm chỉ chứa bản ghi metadata doanh thu (không có nguyên liệu nào)
+  const visibleGroups = groupedTransactions.filter(g => g.items.some(t => t.ingredient_id));
+
   const filtered = search
-    ? groupedTransactions.filter(g =>
+    ? visibleGroups.filter(g =>
       g.items.some(t => unsignedString(t.ingredients?.name ?? '').includes(unsignedString(search))) ||
       unsignedString(g.supplier_name ?? '').includes(unsignedString(search)) ||
       unsignedString(g.notes ?? '').includes(unsignedString(search))
     )
-    : groupedTransactions;
+    : visibleGroups;
 
   const handleSelectCombined = (ing: any) => {
     setCombinedSearchTerm(ing.name);
