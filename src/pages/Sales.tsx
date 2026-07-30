@@ -532,7 +532,8 @@ export default function Sales() {
       transaction_date: date,
       notes: `Đồng bộ tiêu hao ngày ${date} (Tự động FIFO)`,
       created_by: user?.id,
-      reference_id: referenceId
+      reference_id: referenceId,
+      is_approved: true
     }));
 
     if (revenueToSave !== undefined && revenueToSave > 0) {
@@ -543,7 +544,8 @@ export default function Sales() {
         transaction_date: date,
         notes: `[REVENUE: ${revenueToSave}]`,
         created_by: user?.id,
-        reference_id: referenceId
+        reference_id: referenceId,
+        is_approved: true
       });
       localStorage.setItem(`daily_revenue_${date}`, revenueToSave.toString());
     }

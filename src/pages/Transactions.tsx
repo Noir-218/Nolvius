@@ -129,6 +129,7 @@ export default function Transactions() {
   // Modal / Form
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingReferenceId, setEditingReferenceId] = useState<string | null>(null);
+  const [editingLegacyIds, setEditingLegacyIds] = useState<string[]>([]);
   const [txType, setTxType] = useState<string>('IN');
   const [txDate, setTxDate] = useState<string>(today);
   const [txSupplier, setTxSupplier] = useState<string>('');
@@ -315,6 +316,7 @@ export default function Transactions() {
 
   const resetForm = () => {
     setEditingReferenceId(null);
+    setEditingLegacyIds([]);
     setTxType('IN');
     setTxDate(today);
     setTxSupplier('');
@@ -346,12 +348,17 @@ export default function Transactions() {
 
     setSaving(true);
     const isNeg = ['OUT', 'WASTE', 'WASTE_SYSTEM', 'SALES_USAGE'].includes(txType);
-    const referenceId = editingReferenceId || crypto.randomUUID();
+    const referenceId = (editingReferenceId && !editingReferenceId.includes('|')) ? editingReferenceId : crypto.randomUUID();
 
     try {
       if (editingReferenceId) {
-        // Simple approach: Delete old batch and insert new one
-        await supabase.from('stock_transactions').delete().eq('reference_id', editingReferenceId);
+        if (editingReferenceId.includes('|')) {
+          if (editingLegacyIds.length > 0) {
+            await supabase.from('stock_transactions').delete().in('id', editingLegacyIds);
+          }
+        } else {
+          await supabase.from('stock_transactions').delete().eq('reference_id', editingReferenceId);
+        }
       }
 
       const inserts = validLines.map(l => {
@@ -658,7 +665,8 @@ export default function Transactions() {
 
   const startEdit = (group: TransactionGroup) => {
     const isLegacy = group.id.includes('|');
-    setEditingReferenceId(isLegacy ? null : group.id); 
+    setEditingReferenceId(group.id); 
+    setEditingLegacyIds(isLegacy ? group.items.map(i => i.id) : []);
     setTxType(group.type);
     setTxDate(group.transaction_date || today);
     setTxSupplier(group.items[0]?.supplier_id || '');
