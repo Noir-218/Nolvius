@@ -44,6 +44,14 @@ export const RecipesTab = () => {
     { type: 'ingredient', component_id: '', quantity: '0', searchTerm: '', isDropdownOpen: false, selectedIndex: -1 }
   ]);
 
+  // Auto-scroll dropdown active item into view
+  useEffect(() => {
+    const activeItem = document.querySelector('.dropdown-active-item');
+    if (activeItem) {
+      activeItem.scrollIntoView({ block: 'nearest' });
+    }
+  });
+
   const fetchData = async () => {
     setLoading(true);
     const [pRes, iRes, rRes, icRes, pcRes] = await Promise.all([
@@ -368,7 +376,7 @@ export const RecipesTab = () => {
                                   <button
                                     key={o.id}
                                     type="button"
-                                    className={`list-group-item list-group-item-action border-0 py-2 px-3 small d-flex justify-content-between align-items-center ${row.selectedIndex === oIdx ? 'bg-primary text-white' : ''}`}
+                                    className={`list-group-item list-group-item-action border-0 py-2 px-3 small d-flex justify-content-between align-items-center ${row.selectedIndex === oIdx ? 'bg-light dropdown-active-item' : ''}`}
                                     onMouseDown={() => {
                                       const newF = [...formData];
                                       newF[idx] = { ...newF[idx], component_id: o.id, searchTerm: o.name, isDropdownOpen: false, selectedIndex: -1 };
@@ -378,12 +386,12 @@ export const RecipesTab = () => {
                                     <div>
                                       <span className="fw-bold">{o.name}</span>
                                       {row.type === 'ingredient' && (
-                                        <div className={`${row.selectedIndex === oIdx ? 'text-white-50' : 'text-muted'}`} style={{ fontSize: '10px' }}>
+                                        <div className="text-muted" style={{ fontSize: '10px' }}>
                                           {categories.find(c => c.id === o.category_id)?.name || 'Không có danh mục'}
                                         </div>
                                       )}
                                     </div>
-                                    <span className={`badge rounded-pill ${row.selectedIndex === oIdx ? 'bg-white text-primary' : 'bg-light text-secondary'}`}>
+                                    <span className="badge rounded-pill bg-light text-secondary">
                                       {o.unit || '-'}
                                     </span>
                                   </button>

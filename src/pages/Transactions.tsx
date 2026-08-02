@@ -173,6 +173,14 @@ export default function Transactions() {
   const [showExportForm, setShowExportForm] = useState(false);
   const [exportExtraData, setExportExtraData] = useState<Record<string, string>>({});
 
+  // Auto-scroll dropdown active item into view
+  useEffect(() => {
+    const activeItem = document.querySelector('.dropdown-active-item');
+    if (activeItem) {
+      activeItem.scrollIntoView({ block: 'nearest' });
+    }
+  });
+
   const fetchData = async () => {
     setLoading(true);
     let query = supabase
@@ -1154,14 +1162,14 @@ export default function Transactions() {
                             <button
                               key={i.id}
                               type="button"
-                              className={`list-group-item list-group-item-action border-0 py-2 px-3 small d-flex justify-content-between align-items-center ${combinedSelectedIndex === idx ? 'bg-primary text-white' : ''}`}
+                              className={`list-group-item list-group-item-action border-0 py-2 px-3 small d-flex justify-content-between align-items-center ${combinedSelectedIndex === idx ? 'bg-light dropdown-active-item' : ''}`}
                               onClick={() => handleSelectCombined(i)}
                             >
                               <div>
                                 <span className="fw-bold">{i.name}</span>
-                                <div className={`${combinedSelectedIndex === idx ? 'text-white-50' : 'text-muted'}`} style={{ fontSize: '10px' }}>{i.ingredient_categories?.name || 'Không có danh mục'}</div>
+                                <div className="text-muted" style={{ fontSize: '10px' }}>{i.ingredient_categories?.name || 'Không có danh mục'}</div>
                               </div>
-                              <span className={`badge rounded-pill ${combinedSelectedIndex === idx ? 'bg-white text-primary' : 'bg-light text-secondary'}`}>{i.unit}</span>
+                              <span className="badge rounded-pill bg-light text-secondary">{i.unit}</span>
                             </button>
                           ))}
                       </div>
@@ -1622,7 +1630,7 @@ export default function Transactions() {
                               <button
                                 key={p.id}
                                 type="button"
-                                className={`list-group-item list-group-item-action border-0 py-2 px-3 small d-flex justify-content-between align-items-center ${productSelectedIndex === idx ? 'bg-primary text-white' : ''}`}
+                                className={`list-group-item list-group-item-action border-0 py-2 px-3 small d-flex justify-content-between align-items-center ${productSelectedIndex === idx ? 'bg-light dropdown-active-item' : ''}`}
                                 onMouseDown={() => {
                                   setSelectedProductId(p.id);
                                   setProductSearchTerm(p.name);
@@ -1632,11 +1640,11 @@ export default function Transactions() {
                               >
                                 <div>
                                   <span className="fw-bold">{p.name}</span>
-                                  <div className={`${productSelectedIndex === idx ? 'text-white-50' : 'text-muted'}`} style={{ fontSize: '10px' }}>
+                                  <div className="text-muted" style={{ fontSize: '10px' }}>
                                     {productCategories.find(c => c.id === p.category_id)?.name || 'Không có danh mục'}
                                   </div>
                                 </div>
-                                <span className={`badge rounded-pill ${productSelectedIndex === idx ? 'bg-white text-primary' : 'bg-light text-secondary'}`}>
+                                <span className="badge rounded-pill bg-light text-secondary">
                                   {p.unit || '-'}
                                 </span>
                               </button>
@@ -1855,7 +1863,7 @@ export default function Transactions() {
                                     <button
                                       key={i.id}
                                       type="button"
-                                      className={`list-group-item list-group-item-action border-0 py-2 px-3 small d-flex justify-content-between align-items-center ${line.selectedIndex === idx ? 'bg-primary text-white' : ''}`}
+                                      className={`list-group-item list-group-item-action border-0 py-2 px-3 small d-flex justify-content-between align-items-center ${line.selectedIndex === idx ? 'bg-light dropdown-active-item' : ''}`}
                                       onClick={() => {
                                         setLines(prev => prev.map(l => 
                                           l.id === line.id ? { ...l, ingredient_id: i.id, searchTerm: i.name, isDropdownOpen: false, unit_name: 'base', selectedIndex: -1 } : l

@@ -55,6 +55,22 @@ export async function syncDataBetweenFacilities(
         continue;
       }
 
+      // Xử lý đặc biệt cho bảng recipes: Xóa các công thức cũ của các sản phẩm sắp được đồng bộ
+      // để tránh tình trạng nhân đôi do ID của recipes thay đổi mỗi khi được chỉnh sửa
+      if (table === 'recipes') {
+        const productIds = Array.from(new Set(sourceData.map((r: any) => r.product_id).filter(Boolean)));
+        if (productIds.length > 0) {
+          const { error: deleteError } = await destClient
+            .from('recipes')
+            .delete()
+            .in('product_id', productIds);
+          
+          if (deleteError) {
+            console.warn(`Lỗi khi xóa công thức cũ: ${deleteError.message}`);
+          }
+        }
+      }
+
       const onConflict = ON_CONFLICT_MAP[table] || 'id';
 
       const { error: upsertError } = await destClient
