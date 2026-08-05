@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase'; // Master DB
-import { Search, Mail, Edit3, Check, X, Database, Trash2, Calendar, AlertTriangle, Plus, Landmark, CheckSquare, Square, ShieldCheck } from 'lucide-react';
+import { getFacilityClient } from '../lib/facilityClient';
+import { Search, Mail, Edit3, Check, X, Database, Trash2, Calendar, AlertTriangle, Plus, Landmark, CheckSquare, Square, ShieldCheck, Building2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { Navigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
@@ -61,6 +62,7 @@ export default function Users() {
   const [selectedFacilityIds, setSelectedFacilityIds] = useState<string[]>([]);
 
   // Maintenance State
+  const [cleanupFacilityId, setCleanupFacilityId] = useState<string>('__master__');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [deleteOptions, setDeleteOptions] = useState({
@@ -321,6 +323,19 @@ export default function Users() {
       return;
     }
 
+    // Resolve the correct Supabase client for the selected facility
+    let targetClient = supabase; // default: master
+    let facilityLabel = 'Master (Cơ sở mặc định)';
+    if (cleanupFacilityId !== '__master__') {
+      const fac = facilities.find(f => f.id === cleanupFacilityId);
+      if (!fac) {
+        alert('Không tìm thấy thông tin cơ sở đã chọn!');
+        return;
+      }
+      targetClient = getFacilityClient(fac.id, fac.supabase_url, fac.supabase_anon_key) as any;
+      facilityLabel = fac.name;
+    }
+
     const selectedTypes: string[] = [];
     if (deleteOptions.audits) selectedTypes.push('Kiểm kê NVL');
     if (deleteOptions.transactions) selectedTypes.push('Giao dịch kho');
@@ -333,7 +348,7 @@ export default function Users() {
       needsMonthRange ? `- Tháng: ${startMonth} → ${endMonth}` : '',
     ].filter(Boolean).join('\n');
 
-    const confirmMsg = `CẢNH BÁO NGUY HIỂM!\n\nBạn đang yêu cầu XÓA VĨNH VIỄN dữ liệu:\n- Loại: ${selectedTypes.join(', ')}\n${rangeInfo}\n\nHành động này KHÔNG THỂ HOÀN TÁC. Bạn có chắc chắn muốn tiếp tục?`;
+    const confirmMsg = `CẢNH BÁO NGUY HIỂM!\n\nBạn đang yêu cầu XÓA VĨNH VIỄN dữ liệu:\n- Cơ sở: ${facilityLabel}\n- Loại: ${selectedTypes.join(', ')}\n${rangeInfo}\n\nHành động này KHÔNG THỂ HOÀN TÁC. Bạn có chắc chắn muốn tiếp tục?`;
 
     if (!window.confirm(confirmMsg)) return;
     if (!window.confirm('XÁC NHẬN LẦN CUỐI: Bạn thực sự muốn xóa toàn bộ dữ liệu đã chọn?')) return;
@@ -344,7 +359,7 @@ export default function Users() {
       const errorMsgs: string[] = [];
 
       if (deleteOptions.audits) {
-        const { error } = await supabase
+        const { error } = await targetClient
           .from('stock_audits')
           .delete()
           .gte('audit_date', startDate)
@@ -354,7 +369,7 @@ export default function Users() {
       }
 
       if (deleteOptions.transactions) {
-        const { error } = await supabase
+        const { error } = await targetClient
           .from('stock_transactions')
           .delete()
           .gte('transaction_date', startDate)
@@ -364,7 +379,7 @@ export default function Users() {
       }
 
       if (deleteOptions.teaCake) {
-        const { error } = await supabase
+        const { error } = await targetClient
           .from('tea_cake_audits')
           .delete()
           .gte('audit_date', startDate)
@@ -374,7 +389,7 @@ export default function Users() {
       }
 
       if (deleteOptions.monthlyOpening) {
-        const { error } = await supabase
+        const { error } = await targetClient
           .from('monthly_opening_stock')
           .delete()
           .gte('year_month', startMonth)
@@ -385,14 +400,14 @@ export default function Users() {
 
       if (deleteOptions.sales) {
         // 1. Delete from sales table
-        const { error: saleErr } = await supabase
+        const { error: saleErr } = await targetClient
           .from('sales')
           .delete()
           .gte('sale_date', startDate)
           .lte('sale_date', endDate);
         
         // 2. Delete from stock_transactions table (SALES_USAGE types only)
-        const { error: txErr } = await supabase
+        const { error: txErr } = await targetClient
           .from('stock_transactions')
           .delete()
           .eq('type', 'SALES_USAGE')
@@ -981,6 +996,29 @@ export default function Users() {
                       Sử dụng công cụ này để xóa các dữ liệu cũ không còn cần thiết. 
                       Hành động này giúp giảm tải hệ thống nhưng cần hết sức cẩn trọng.
                     </p>
+
+                    {/* Facility Selector */}
+                    <div className="mb-4">
+                      <label className="form-label small fw-black text-secondary text-uppercase tracking-wider d-flex align-items-center gap-2">
+                        <Building2 size={14} /> Cơ sở cần dọn dẹp
+                      </label>
+                      <select
+                        className="form-select"
+                        value={cleanupFacilityId}
+                        onChange={e => setCleanupFacilityId(e.target.value)}
+                      >
+                        <option value="__master__">Master (Cơ sở mặc định)</option>
+                        {facilities.map(fac => (
+                          <option key={fac.id} value={fac.id}>{fac.name}</option>
+                        ))}
+                      </select>
+                      {cleanupFacilityId !== '__master__' && (
+                        <div className="mt-2 p-2 bg-warning bg-opacity-10 rounded-2 small text-warning-emphasis d-flex align-items-center gap-2" style={{fontSize:'11px'}}>
+                          <AlertTriangle size={12} />
+                          Bạn đang thao tác trên database của <strong>{facilities.find(f => f.id === cleanupFacilityId)?.name}</strong>. Hãy kiểm tra kỹ trước khi xóa.
+                        </div>
+                      )}
+                    </div>
 
                     <div className="mb-4">
                       <label className="form-label small fw-black text-secondary text-uppercase tracking-wider">Khoảng thời gian</label>
