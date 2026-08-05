@@ -384,10 +384,13 @@ export default function Sales() {
     }
 
     // Xác định ngày audit sớm nhất trong map để fetch tx từ đó (tránh giới hạn 1000 row của Supabase)
+    const monthStart = format(dateObj, 'yyyy-MM-01');
     const auditDates = Object.values(latestAuditMap).map(a => a.audit_date.slice(0, 10));
+    // FIX: Luôn fetch từ đầu tháng để đảm bảo nguyên liệu không có audit không bị thiếu SALES_USAGE
+    // Nếu có audit từ trước đầu tháng thì lấy từ ngày audit sớm nhất đó
     const earliestAuditDate = auditDates.length > 0
-      ? auditDates.reduce((min, d) => d < min ? d : min, auditDates[0])
-      : format(dateObj, 'yyyy-MM-01');
+      ? auditDates.reduce((min, d) => d < min ? d : min, monthStart)
+      : monthStart;
 
     const txFetchTo = date + 'T23:59:59+07:00';
     const { data: txsData } = await supabase
@@ -437,17 +440,23 @@ export default function Sales() {
           }
         });
       } else {
+        // Không có audit: dùng tồn đầu tháng + tất cả tx từ đầu tháng đến ngày bán
+        // FIX: Lọc theo monthStart để không phụ thuộc vào earliestAuditDate của nguyên liệu khác
         stock = openingMap[ing.id] ?? 0;
         if (txsData) {
           txsData.forEach(tx => {
             if (tx.ingredient_id === ing.id) {
-              const qty = Number(tx.quantity);
-              if (['IN', 'IN_TRANSFER'].includes(tx.type)) {
-                if (!tx.branch_id || !sealedBranchIds.has(tx.branch_id)) {
-                  stock += qty;
+              const txDate = tx.transaction_date.slice(0, 10);
+              // Chỉ tính từ đầu tháng trở đi (openingMap đã bao gồm tồn trước tháng)
+              if (txDate >= monthStart) {
+                const qty = Number(tx.quantity);
+                if (['IN', 'IN_TRANSFER'].includes(tx.type)) {
+                  if (!tx.branch_id || !sealedBranchIds.has(tx.branch_id)) {
+                    stock += qty;
+                  }
+                } else {
+                  stock -= Math.abs(qty);
                 }
-              } else {
-                stock -= Math.abs(qty);
               }
             }
           });
@@ -486,11 +495,13 @@ export default function Sales() {
 
     // 3. Phân bổ tiêu hao dựa trên thuật toán FIFO Trừ Kho Thông Minh (Nguyên Liệu Thay Thế)
     const finalUsage: Record<string, number> = {};
+    const debugLogs: Record<string, string[]> = {};
 
     Object.entries(totalUsage).forEach(([ingId, qty]) => {
       let currentId = ingId;
       let needed = qty;
       const visitedChain = new Set<string>();
+      const initialId = ingId;
 
       while (needed > 0) {
         visitedChain.add(currentId);
@@ -498,10 +509,14 @@ export default function Sales() {
         const stock = availableStock[currentId] ?? 0;
         const successorId = ingredient?.substitute_id;
 
+        if (!debugLogs[initialId]) debugLogs[initialId] = [];
+
         if (successorId && !visitedChain.has(successorId)) {
           // Có nguyên liệu thay thế cấu hình: Chỉ trừ tối đa số lượng tồn khả dụng (nếu > 0)
           const availableToTake = Math.max(0, stock);
           const taken = Math.min(needed, availableToTake);
+
+          debugLogs[initialId].push(`[${currentId}: need=${needed}, stock=${stock}, take=${taken}, next=${successorId}]`);
 
           if (taken > 0) {
             finalUsage[currentId] = (finalUsage[currentId] || 0) + taken;
@@ -516,6 +531,8 @@ export default function Sales() {
         } else {
           // Không còn nguyên liệu thay thế (hoặc bị vòng lặp vô hạn):
           // Trừ toàn bộ lượng còn thiếu vào nguyên liệu này (cho phép tồn âm)
+          debugLogs[initialId].push(`[${currentId} (FINAL): need=${needed}, stock=${stock}, sub=${successorId}]`);
+          
           finalUsage[currentId] = (finalUsage[currentId] || 0) + needed;
           availableStock[currentId] -= needed;
           needed = 0;
@@ -525,16 +542,22 @@ export default function Sales() {
 
     // 4. Tạo các giao dịch stock_transactions loại SALES_USAGE
     const referenceId = crypto.randomUUID();
-    const txInserts = Object.entries(finalUsage).map(([ingId, qty]) => ({
-      ingredient_id: ingId,
-      type: 'SALES_USAGE',
-      quantity: -qty,
-      transaction_date: date,
-      notes: `Đồng bộ tiêu hao ngày ${date} (Tự động FIFO)`,
-      created_by: user?.id,
-      reference_id: referenceId,
-      is_approved: true
-    }));
+    const txInserts = Object.entries(finalUsage).map(([ingId, qty]) => {
+      // Find which initialId triggered this usage to attach its debug log
+      const initialId = Object.keys(debugLogs).find(id => debugLogs[id].join('').includes(ingId)) || ingId;
+      const trace = debugLogs[initialId] ? debugLogs[initialId].join(' ➔ ') : '';
+      
+      return {
+        ingredient_id: ingId,
+        type: 'SALES_USAGE',
+        quantity: -qty,
+        transaction_date: date,
+        notes: `Đồng bộ tiêu hao ngày ${date} (Tự động FIFO). Trace: ${trace}`,
+        created_by: user?.id,
+        reference_id: referenceId,
+        is_approved: true
+      };
+    });
 
     if (revenueToSave !== undefined && revenueToSave > 0) {
       txInserts.push({
