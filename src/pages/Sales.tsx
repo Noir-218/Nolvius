@@ -398,7 +398,8 @@ export default function Sales() {
       .select('ingredient_id, type, quantity, transaction_date, branch_id')
       .gte('transaction_date', earliestAuditDate)
       .lte('transaction_date', txFetchTo)
-      .order('transaction_date', { ascending: true })
+      .order('transaction_date', { ascending: false })
+      .order('created_at', { ascending: false })
       .limit(10000);
 
     console.log(`[SYNC DEBUG] Date: ${date}, txFetchFrom: ${earliestAuditDate}, txFetchTo: ${txFetchTo}`);
