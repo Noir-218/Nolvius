@@ -524,6 +524,7 @@ export type Database = {
           supplier_id: string | null
           transaction_date: string
           type: string
+          metadata: any | null
         }
         Insert: {
           branch_id?: string | null
@@ -541,6 +542,7 @@ export type Database = {
           supplier_id?: string | null
           transaction_date?: string
           type: string
+          metadata?: any | null
         }
         Update: {
           branch_id?: string | null
@@ -558,6 +560,7 @@ export type Database = {
           supplier_id?: string | null
           transaction_date?: string
           type?: string
+          metadata?: any | null
         }
         Relationships: [
           {

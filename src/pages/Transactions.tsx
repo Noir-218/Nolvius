@@ -50,6 +50,7 @@ interface Transaction {
   ingredients: { name: string; unit: string } | null;
   suppliers: { name: string } | null;
   branches: { name: string } | null;
+  metadata: any | null;
   created_at: string;
 }
 
@@ -390,9 +391,9 @@ export default function Transactions() {
           notes: (txType === 'WASTE' && txRevenue) ? `[DT: ${parseFloat(txRevenue).toLocaleString()}] ${txNotes}` : (txNotes || null),
           is_fast_entered: txIsFast,
           is_approved: isSalesUsage ? true : txIsApproved,
-          is_transfer_exported: txIsExported,
           is_received: txIsReceived,
           reference_id: referenceId,
+          metadata: (txType === 'WASTE_SYSTEM' && selectedWasteProducts.length > 0) ? { waste_products: selectedWasteProducts } : null,
           created_by: user?.id
         };
       });
@@ -586,15 +587,36 @@ export default function Transactions() {
       });
 
       const product = productList.find(p => p.id === selectedProductId);
-      const newSelectedEntry: SelectedWasteProduct = {
-        id: crypto.randomUUID(),
-        productId: selectedProductId,
-        name: product?.name || 'Sản phẩm',
-        quantity: pQty,
-        ingredientUsages: { ...finalUsage }
-      };
 
-      setSelectedWasteProducts(prev => [...prev, newSelectedEntry]);
+      setSelectedWasteProducts(prev => {
+        const existingIdx = prev.findIndex(p => p.productId === selectedProductId);
+        if (existingIdx !== -1) {
+          const updated = [...prev];
+          const existing = updated[existingIdx];
+          
+          // Merge ingredientUsages
+          const mergedUsages = { ...existing.ingredientUsages };
+          Object.entries(finalUsage).forEach(([ingId, qty]) => {
+             mergedUsages[ingId] = (mergedUsages[ingId] || 0) + qty;
+          });
+          
+          updated[existingIdx] = {
+            ...existing,
+            quantity: existing.quantity + pQty,
+            ingredientUsages: mergedUsages
+          };
+          return updated;
+        } else {
+          const newSelectedEntry: SelectedWasteProduct = {
+            id: crypto.randomUUID(),
+            productId: selectedProductId,
+            name: product?.name || 'Sản phẩm',
+            quantity: pQty,
+            ingredientUsages: { ...finalUsage }
+          };
+          return [...prev, newSelectedEntry];
+        }
+      });
 
       setLines(prev => {
         let updatedLines = [...prev.filter(l => l.ingredient_id && l.quantity)];
@@ -696,6 +718,12 @@ export default function Transactions() {
     } else {
       setTxRevenue('');
       setTxNotes(group.notes || '');
+    }
+
+    if (group.type === 'WASTE_SYSTEM' && group.items[0]?.metadata?.waste_products) {
+      setSelectedWasteProducts(group.items[0].metadata.waste_products);
+    } else {
+      setSelectedWasteProducts([]);
     }
 
     setLines(group.items.map(item => ({
@@ -1363,6 +1391,19 @@ export default function Transactions() {
                               <tr>
                                 <td colSpan={6} className="px-5 py-3 bg-light bg-opacity-25 border-bottom">
                                   <div className="card border-0 shadow-sm rounded-3 overflow-hidden">
+                                    {group.type === 'WASTE_SYSTEM' && group.items[0]?.metadata?.waste_products && (
+                                      <div className="bg-warning-subtle p-3 border-bottom border-warning border-opacity-25">
+                                        <h6 className="fw-black text-warning-emphasis text-uppercase small mb-2 tracking-widest" style={{ fontSize: '10px' }}>Sản Phẩm Đã Hủy</h6>
+                                        <div className="d-flex flex-wrap gap-2">
+                                          {(group.items[0].metadata.waste_products as SelectedWasteProduct[]).map(p => (
+                                            <span key={p.id} className="badge bg-white text-dark border border-warning-subtle px-2 py-1 shadow-sm d-flex align-items-center gap-2">
+                                              <span className="fw-black text-warning-emphasis">{p.quantity}</span>
+                                              <span className="fw-bold">{p.name}</span>
+                                            </span>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
                                     <table className="table table-sm table-borderless mb-0 bg-transparent" style={{ fontSize: '12px' }}>
                                       <thead>
                                         <tr className="bg-white border-bottom shadow-sm">

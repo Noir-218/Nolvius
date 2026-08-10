@@ -96,6 +96,7 @@ CREATE TABLE IF NOT EXISTS stock_transactions (
     quantity NUMERIC(12, 6) NOT NULL,
     transaction_date DATE NOT NULL,
     notes TEXT,
+    metadata JSONB,
     created_by UUID,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
 );
