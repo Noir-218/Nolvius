@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useFacility } from '../contexts/FacilityContext';
 import { Search, AlertTriangle, AlertCircle, CheckCircle2, ClipboardList, Calendar, Archive, Info, CalendarCheck, RefreshCw } from 'lucide-react';
 import { format, parseISO, endOfMonth, addDays, subDays } from 'date-fns';
+import { fetchAllSupabase } from '../lib/supabaseUtils';
 import { StockAIAssistant } from '../components/StockAIAssistant';
 import { IngredientLossAnalyzer } from '../components/IngredientLossAnalyzer';
 import { usePermissions } from '../hooks/usePermissions';
@@ -99,13 +100,14 @@ const Stock = () => {
         return;
       }
 
-      const { data: txData } = await supabase
+      const txQuery = supabase
         .from('stock_transactions')
         .select('ingredient_id, type, quantity, transaction_date, branch_id')
         .gte('transaction_date', monthStart)
         .lte('transaction_date', endDate)
-        .order('transaction_date', { ascending: true })
-        .limit(10000);
+        .order('transaction_date', { ascending: true });
+        
+      const txData = await fetchAllSupabase(txQuery);
 
       const txMap: Record<string, Record<string, number>> = {};
       if (txData) {

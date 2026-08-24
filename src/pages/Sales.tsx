@@ -5,6 +5,7 @@ import * as xlsx from 'xlsx';
 import { useAuth } from '../contexts/AuthContext';
 import { usePermissions } from '../hooks/usePermissions';
 import { format, parseISO } from 'date-fns';
+import { fetchAllSupabase } from '../lib/supabaseUtils';
 
 interface ParsedSale {
   product_name: string;
@@ -103,8 +104,8 @@ export default function Sales() {
         }
         const colNetRevenue = headerRow.findIndex(h => ['doanh thu (net)', 'doanh thu net', 'net revenue', 'doanh thu'].includes(h));
 
-        const { data: dbProducts } = await supabase.from('products').select('id, name').limit(10000);
-        const { data: dbIngredients } = await supabase.from('ingredients').select('id, name').limit(10000);
+        const dbProducts = await fetchAllSupabase(supabase.from('products').select('id, name'));
+        const dbIngredients = await fetchAllSupabase(supabase.from('ingredients').select('id, name'));
         
         const nameMap = new Map((dbProducts || []).map(p => [cleanString(p.name.toLowerCase()), p.id]));
         const codeMap = new Map((dbProducts || []).map(p => [cleanString(p.id.toLowerCase()), p.id]));
@@ -169,13 +170,12 @@ export default function Sales() {
 
         const productIds = Object.keys(qtyByProduct);
         if (productIds.length > 0) {
-          // 1. Fetch ALL ingredients for metadata
-          const { data: allIngs } = await supabase.from('ingredients').select('id, name, unit').limit(10000);
+          const allIngs = await fetchAllSupabase(supabase.from('ingredients').select('id, name, unit'));
           const ingMetadata: Record<string, {name: string, unit: string}> = {};
           (allIngs || []).forEach(i => ingMetadata[i.id] = { name: i.name, unit: i.unit });
 
           // 2. Fetch ALL recipes to resolve recursively
-          const { data: allRecipes } = await supabase.from('recipes').select('*').limit(10000);
+          const allRecipes = await fetchAllSupabase(supabase.from('recipes').select('*'));
           
           const calcUsages: Record<string, number> = {};
           const ingIds = new Set((allIngs || []).map(i => i.id));
@@ -322,8 +322,8 @@ export default function Sales() {
     daySales.forEach(s => { if (s.product_id) qtyByProduct[s.product_id] = (qtyByProduct[s.product_id] || 0) + s.quantity; });
 
     const productIds = Object.keys(qtyByProduct);
-    const { data: allRecipes } = await supabase.from('recipes').select('*').limit(10000);
-    const { data: allIngs } = await supabase.from('ingredients').select('id, name, substitute_id').limit(10000);
+    const allRecipes = await fetchAllSupabase(supabase.from('recipes').select('*'));
+    const allIngs = await fetchAllSupabase(supabase.from('ingredients').select('id, name, substitute_id'));
     if (!allIngs) return;
 
     // Fetch branches to identify sealed ones
@@ -362,13 +362,14 @@ export default function Sales() {
     }
 
     // Fetch audits trước ngày date (audit_date < date)
-    const { data: auditsData } = await supabase
+    const auditsQuery = supabase
       .from('stock_audits')
       .select('ingredient_id, actual_stock, audit_date')
       .lt('audit_date', date)
       .order('audit_date', { ascending: false })
-      .order('created_at', { ascending: false })
-      .limit(10000);
+      .order('created_at', { ascending: false });
+    
+    const auditsData = await fetchAllSupabase(auditsQuery);
 
     // Map chứa audit mới nhất trước ngày date của từng nguyên liệu
     const latestAuditMap: Record<string, { actual_stock: number, audit_date: string }> = {};
@@ -393,14 +394,15 @@ export default function Sales() {
       : monthStart;
 
     const txFetchTo = date + 'T23:59:59+07:00';
-    const { data: txsData } = await supabase
+    const txQuery = supabase
       .from('stock_transactions')
       .select('ingredient_id, type, quantity, transaction_date, branch_id')
       .gte('transaction_date', earliestAuditDate)
       .lte('transaction_date', txFetchTo)
       .order('transaction_date', { ascending: false })
-      .order('created_at', { ascending: false })
-      .limit(10000);
+      .order('created_at', { ascending: false });
+
+    const txsData = await fetchAllSupabase(txQuery);
 
     console.log(`[SYNC DEBUG] Date: ${date}, txFetchFrom: ${earliestAuditDate}, txFetchTo: ${txFetchTo}`);
     console.log(`[SYNC DEBUG] txsData count: ${txsData?.length ?? 'null'}`);

@@ -10,7 +10,8 @@ import {
   Camera,
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
-import { format, addDays, parseISO, differenceInCalendarDays } from 'date-fns';
+import { format, addDays, parseISO, differenceInCalendarDays, subDays, startOfMonth, endOfMonth } from 'date-fns';
+import { fetchAllSupabase } from '../../lib/supabaseUtils';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -369,14 +370,14 @@ export const TeaAndCakeAuditTab: React.FC<Props> = ({ selectedDate }) => {
       if (monthlyData) monthlyData.forEach((m) => { monthlyMap[m.ingredient_id] = Number(m.opening_stock) || 0; });
 
       // 2.4 Fetch transactions for theoretical (Since last audit up to today)
-      const { data: txData } = await supabase
+      const txQuery = supabase
         .from('stock_transactions')
         .select('ingredient_id, type, quantity, transaction_date')
         .gte('transaction_date', startOfThisMonth)
-        .lte('transaction_date', selectedDate)
-        .in('ingredient_id', ingIds)
-        .order('transaction_date', { ascending: true })
-        .limit(10000);
+        .lt('transaction_date', selectedDate)
+        .order('transaction_date', { ascending: false });
+        
+      const txData = await fetchAllSupabase(txQuery);
 
       const txSummary: Record<string, { in: number, out: number }> = {};
       if (txData) {

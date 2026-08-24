@@ -8,6 +8,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { usePermissions } from '../hooks/usePermissions';
 import { format, parseISO, subDays, startOfMonth } from 'date-fns';
 import toast from 'react-hot-toast';
+import { fetchAllSupabase } from '../lib/supabaseUtils';
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -208,12 +209,13 @@ export default function Audit() {
     };
 
     const startOfThisMonth = format(startOfMonth(parseDate(selectedDate)), 'yyyy-MM-dd');
-    const { data: priorAudits } = await supabase
+    const priorAuditsQuery = supabase
       .from('stock_audits')
       .select('ingredient_id, actual_stock, audit_date')
       .gte('audit_date', startOfThisMonth)
       .lt('audit_date', selectedDate)
       .order('audit_date', { ascending: false });
+    const priorAudits = await fetchAllSupabase(priorAuditsQuery);
 
     const priorActualMap: Record<string, number> = {};
     const priorDateMap: Record<string, string> = {};
@@ -240,26 +242,29 @@ export default function Audit() {
     setHasMonthlyOpening(monthlyData ? monthlyData.length > 0 : false);
 
     // Split transactions fetching to avoid 1000-row limit issues
-    const [todayTxRes, monthlyTxRes] = await Promise.all([
+    const [todayTxData, monthlyTxData] = await Promise.all([
       // 1. Fetch today's transactions (high priority for Xuất/Nhập columns)
-      supabase
-        .from('stock_transactions')
-        .select('ingredient_id, type, quantity, transaction_date')
-        .eq('transaction_date', selectedDate),
+      fetchAllSupabase(
+        supabase
+          .from('stock_transactions')
+          .select('ingredient_id, type, quantity, transaction_date')
+          .eq('transaction_date', selectedDate)
+      ),
       // 2. Fetch historical transactions for Opening Stock calculation
-      supabase
-        .from('stock_transactions')
-        .select('ingredient_id, type, quantity, transaction_date')
-        .gte('transaction_date', startOfThisMonth)
-        .lt('transaction_date', selectedDate)
-        .order('transaction_date', { ascending: false })
-        .order('created_at', { ascending: false })
-        .limit(10000) // Increase limit for history
+      fetchAllSupabase(
+        supabase
+          .from('stock_transactions')
+          .select('ingredient_id, type, quantity, transaction_date')
+          .gte('transaction_date', startOfThisMonth)
+          .lt('transaction_date', selectedDate)
+          .order('transaction_date', { ascending: false })
+          .order('created_at', { ascending: false })
+      )
     ]);
 
     const txData = [
-      ...(todayTxRes.data || []),
-      ...(monthlyTxRes.data || [])
+      ...(todayTxData || []),
+      ...(monthlyTxData || [])
     ];
 
     const daySummary: DailyTxSummary = {};

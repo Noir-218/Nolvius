@@ -3,6 +3,7 @@ import { useFacility } from '../contexts/FacilityContext';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell } from 'recharts';
 import { format, subDays } from 'date-fns';
 import { RefreshCw } from 'lucide-react';
+import { fetchAllSupabase } from '../lib/supabaseUtils';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -67,24 +68,25 @@ export default function Analysis() {
       const todayStr = format(new Date(), 'yyyy-MM-dd');
 
       // ── 1. SALES_USAGE + WASTE, lọc theo transaction_date ────────────────────
-      // Note: Supabase enforces a 1000-row server cap; .limit(10000) pushes to max allowed
-      const { data: txData } = await supabase
+      const txQuery = supabase
         .from('stock_transactions')
         .select('ingredient_id, quantity, ingredients(name, unit)')
         .in('type', ['SALES_USAGE', 'WASTE', 'WASTE_SYSTEM'])
         .gte('transaction_date', fromStr)
         .lte('transaction_date', todayStr)
-        .order('transaction_date', { ascending: true })
-        .limit(10000);
+        .order('transaction_date', { ascending: true });
+        
+      const txData = await fetchAllSupabase(txQuery);
 
       // ── 2. Stock audits trong kỳ để tính chênh lệch ──────────────────────────
-      const { data: auditData } = await supabase
+      const auditQuery = supabase
         .from('stock_audits')
         .select('ingredient_id, actual_stock, audit_date, ingredients(name, unit)')
         .gte('audit_date', fromStr)
         .lte('audit_date', todayStr)
-        .order('audit_date', { ascending: true })
-        .limit(10000);
+        .order('audit_date', { ascending: true });
+        
+      const auditData = await fetchAllSupabase(auditQuery);
 
       // ── Tổng SALES_USAGE + WASTE theo ingredient ──────────────────────────────
       const salesMap: Record<string, { name: string; unit: string; qty: number }> = {};

@@ -6,6 +6,7 @@ import { Modal } from '../components/ui/Modal';
 import { format, startOfMonth, parseISO } from 'date-fns';
 import { useAuth } from '../contexts/AuthContext';
 import { usePermissions } from '../hooks/usePermissions';
+import { fetchAllSupabase } from '../lib/supabaseUtils';
 import toast from 'react-hot-toast';
 
 
@@ -201,7 +202,7 @@ export default function Transactions() {
     if (filterStatus === 'RECEIVED') query = query.eq('is_received', true);
     if (filterStatus === 'NOT_RECEIVED') query = query.eq('is_received', false);
 
-    const { data } = await query.order('transaction_date', { ascending: false }).order('created_at', { ascending: false });
+    const data = await fetchAllSupabase(query.order('transaction_date', { ascending: false }).order('created_at', { ascending: false }));
     if (data) {
       setTransactions(data as any[]);
     }
