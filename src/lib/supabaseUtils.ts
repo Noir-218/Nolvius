@@ -1,5 +1,3 @@
-import { SupabaseClient } from '@supabase/supabase-js';
-
 /**
  * Fetches all rows from a Supabase query by paginating through the results.
  * This circumvents the PostgREST max-rows server limit (default 1000).

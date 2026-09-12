@@ -10,7 +10,7 @@ import {
   Camera,
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
-import { format, addDays, parseISO, differenceInCalendarDays, subDays, startOfMonth, endOfMonth } from 'date-fns';
+import { format, addDays, parseISO, differenceInCalendarDays } from 'date-fns';
 import { fetchAllSupabase } from '../../lib/supabaseUtils';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
