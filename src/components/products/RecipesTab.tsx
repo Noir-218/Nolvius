@@ -19,7 +19,7 @@ const unsignedString = (str: string) => {
 };
 
 export const RecipesTab = () => {
-  const { facilityClient: supabase } = useFacility();
+  const { facilityClient: supabase, currentFacility } = useFacility();
   const { canEdit } = usePermissions('products');
   const [products, setProducts] = useState<any[]>([]);
   const [ingredients, setIngredients] = useState<any[]>([]);
@@ -29,8 +29,18 @@ export const RecipesTab = () => {
   const [productCategories, setProductCategories] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [ingredientSearch, setIngredientSearch] = useState('');
+  const [selectedIngredient, setSelectedIngredient] = useState<any>(null);
+  const [isIngredientDropdownOpen, setIsIngredientDropdownOpen] = useState(false);
+  const [ingredientSelectedIndex, setIngredientSelectedIndex] = useState(-1);
   const [filterCategory, setFilterCategory] = useState('');
   const [selectedProduct, setSelectedProduct] = useState<string | null>(null);
+  
+  const [isReplaceModalOpen, setIsReplaceModalOpen] = useState(false);
+  const [replaceSearchTerm, setReplaceSearchTerm] = useState('');
+  const [replacementIngredient, setReplacementIngredient] = useState<any>(null);
+  const [isReplaceDropdownOpen, setIsReplaceDropdownOpen] = useState(false);
+  const [replaceSelectedIndex, setReplaceSelectedIndex] = useState(-1);
   
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formData, setFormData] = useState<{
@@ -118,10 +128,55 @@ export const RecipesTab = () => {
     fetchData();
   };
 
+  const handleMassReplace = async () => {
+    if (!selectedIngredient || !replacementIngredient) {
+      alert("Vui lòng chọn nguyên liệu cần thay thế và nguyên liệu mới.");
+      return;
+    }
+
+    if (selectedIngredient.id === replacementIngredient.id) {
+      alert("Nguyên liệu thay thế phải khác nguyên liệu hiện tại.");
+      return;
+    }
+
+    const facilityName = currentFacility?.name || 'hiện tại';
+    const confirmMsg = `Bạn đang thay thế hàng loạt nguyên liệu của cơ sở: ${facilityName.toUpperCase()}.\n\nBạn có chắc chắn muốn thay thế toàn bộ "${selectedIngredient.name}" thành "${replacementIngredient.name}" trong các công thức không?`;
+    
+    if (!window.confirm(confirmMsg)) return;
+
+    // Execute the update
+    const { error } = await supabase
+      .from('recipes')
+      .update({ ingredient_id: replacementIngredient.id })
+      .eq('ingredient_id', selectedIngredient.id);
+
+    if (error) {
+      alert("Có lỗi xảy ra khi thay thế: " + error.message);
+    } else {
+      alert("Thay thế thành công!");
+      setIsReplaceModalOpen(false);
+      setReplacementIngredient(null);
+      setReplaceSearchTerm('');
+      
+      // Select the new ingredient in the main search so the user sees the updated list
+      setSelectedIngredient(replacementIngredient);
+      setIngredientSearch(replacementIngredient.name);
+      
+      fetchData(); // Reload recipes
+    }
+  };
+
   const filteredProducts = products.filter(p => {
     const matchesSearch = !search || unsignedString(p.name).includes(unsignedString(search));
     const matchesCategory = !filterCategory || p.category_id === filterCategory;
-    return matchesSearch && matchesCategory;
+    
+    let matchesIngredient = true;
+    if (selectedIngredient) {
+      const productRecipes = recipes.filter(r => r.product_id === p.id);
+      matchesIngredient = productRecipes.some(r => r.ingredient_id === selectedIngredient.id);
+    }
+    
+    return matchesSearch && matchesCategory && matchesIngredient;
   });
 
   return (
@@ -139,6 +194,93 @@ export const RecipesTab = () => {
                 onChange={e => setSearch(e.target.value)}
                 className="form-control"
               />
+            </div>
+            <div className="position-relative">
+              <div className="input-group input-group-sm">
+                <span className="input-group-text bg-primary-subtle text-primary border-primary-subtle"><Search size={14} /></span>
+                <input
+                  type="text" 
+                  placeholder="Tìm theo nguyên liệu..." 
+                  value={ingredientSearch} 
+                  onChange={e => {
+                    setIngredientSearch(e.target.value);
+                    setIsIngredientDropdownOpen(true);
+                    setIngredientSelectedIndex(-1);
+                    if (selectedIngredient && e.target.value !== selectedIngredient.name) {
+                      setSelectedIngredient(null);
+                    }
+                  }}
+                  onFocus={() => setIsIngredientDropdownOpen(true)}
+                  onKeyDown={e => {
+                    const filteredIngs = ingredients.filter(i => unsignedString(i.name).includes(unsignedString(ingredientSearch)));
+                    if (e.key === 'ArrowDown') {
+                      e.preventDefault();
+                      setIngredientSelectedIndex(prev => (prev + 1) % filteredIngs.length);
+                    } else if (e.key === 'ArrowUp') {
+                      e.preventDefault();
+                      setIngredientSelectedIndex(prev => (prev - 1 + filteredIngs.length) % filteredIngs.length);
+                    } else if (e.key === 'Enter' || e.key === 'Tab') {
+                      if (ingredientSelectedIndex >= 0 && ingredientSelectedIndex < filteredIngs.length) {
+                        e.preventDefault();
+                        const ing = filteredIngs[ingredientSelectedIndex];
+                        setSelectedIngredient(ing);
+                        setIngredientSearch(ing.name);
+                        setIsIngredientDropdownOpen(false);
+                      }
+                    }
+                  }}
+                  className="form-control border-primary-subtle bg-primary-subtle bg-opacity-10"
+                />
+                {ingredientSearch && (
+                  <button 
+                    className="btn btn-outline-primary border-primary-subtle bg-primary-subtle bg-opacity-10 text-primary px-2" 
+                    onClick={() => {
+                      setIngredientSearch('');
+                      setSelectedIngredient(null);
+                    }}
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+              
+              {selectedIngredient && (
+                <button
+                  onClick={() => setIsReplaceModalOpen(true)}
+                  className="btn btn-sm btn-primary w-100 fw-bold d-flex align-items-center justify-content-center gap-2 mt-2 shadow-sm"
+                >
+                  <Edit2 size={14} /> Thay thế hàng loạt
+                </button>
+              )}
+              
+              {isIngredientDropdownOpen && ingredientSearch && !selectedIngredient && (
+                <div className="position-absolute w-100 mt-1 shadow-lg bg-white rounded-3 overflow-hidden border" style={{ zIndex: 1050 }}>
+                  <div className="list-group list-group-flush" style={{ maxHeight: '200px', overflowY: 'auto' }}>
+                    {ingredients
+                      .filter(i => unsignedString(i.name).includes(unsignedString(ingredientSearch)))
+                      .map((i, idx) => (
+                        <button
+                          key={i.id}
+                          type="button"
+                          className={`list-group-item list-group-item-action border-0 py-2 px-3 small d-flex justify-content-between align-items-center ${ingredientSelectedIndex === idx ? 'bg-light dropdown-active-item' : ''}`}
+                          onClick={() => {
+                            setSelectedIngredient(i);
+                            setIngredientSearch(i.name);
+                            setIsIngredientDropdownOpen(false);
+                          }}
+                        >
+                          <div>
+                            <span className="fw-bold">{i.name}</span>
+                            <div className="text-muted" style={{ fontSize: '10px' }}>
+                              {categories.find(c => c.id === i.category_id)?.name || 'Không có danh mục'}
+                            </div>
+                          </div>
+                          <span className="badge rounded-pill bg-light text-secondary">{i.unit}</span>
+                        </button>
+                      ))}
+                  </div>
+                </div>
+              )}
             </div>
             <select
               value={filterCategory}
@@ -163,14 +305,30 @@ export const RecipesTab = () => {
                 onClick={() => setSelectedProduct(p.id)}
                 className={`list-group-item list-group-item-action border-start-4 transition-all py-3 ${isActive ? 'active border-primary shadow-sm bg-primary-subtle' : 'border-transparent'}`}
               >
-                <div className="d-flex justify-content-between align-items-center">
-                  <div>
+                <div className="d-flex justify-content-between align-items-start">
+                  <div className="w-100">
                     <div className={`fw-black mb-1 ${isActive ? 'text-primary' : 'text-dark text-uppercase small tracking-tight'}`}>{p.name}</div>
-                    <div className="small">
-                      {hasRecipe ? (
-                        <span className="badge bg-success-subtle text-success border border-success fw-bold p-1 px-2" style={{fontSize: '9px'}}>ĐÃ CÓ CÔNG THỨC</span>
-                      ) : (
-                        <span className="badge bg-danger-subtle text-danger border border-danger fw-bold p-1 px-2" style={{fontSize: '9px'}}>CHƯA CÓ CÔNG THỨC</span>
+                    <div className="small d-flex flex-column gap-1">
+                      <div>
+                        {hasRecipe ? (
+                          <span className="badge bg-success-subtle text-success border border-success fw-bold p-1 px-2" style={{fontSize: '9px'}}>ĐÃ CÓ CÔNG THỨC</span>
+                        ) : (
+                          <span className="badge bg-danger-subtle text-danger border border-danger fw-bold p-1 px-2" style={{fontSize: '9px'}}>CHƯA CÓ CÔNG THỨC</span>
+                        )}
+                      </div>
+                      
+                      {selectedIngredient && hasRecipe && (
+                        <div className="mt-1 p-2 bg-white rounded-3 border shadow-sm">
+                          {recipes
+                            .filter(r => r.product_id === p.id && r.ingredient_id === selectedIngredient.id)
+                            .map((matchedRecipe, idx) => (
+                              <div key={idx} className="text-primary fw-bold d-flex align-items-center gap-1" style={{fontSize: '11px'}}>
+                                <span className="opacity-50">↳</span> 
+                                <span>{matchedRecipe.ingredients.name}:</span>
+                                <span className="badge bg-primary-subtle text-primary px-1 py-0">{matchedRecipe.quantity} {matchedRecipe.ingredients.unit}</span>
+                              </div>
+                            ))}
+                        </div>
                       )}
                     </div>
                   </div>
@@ -457,6 +615,109 @@ export const RecipesTab = () => {
             <button onClick={() => setIsModalOpen(false)} className="btn btn-light rounded-pill px-4 fw-bold">Hủy</button>
             <button onClick={handleSaveRecipe} className="btn btn-primary rounded-pill px-5 fw-black shadow-sm">
               LƯU CÔNG THỨC
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Thay thế nguyên liệu hàng loạt Modal */}
+      <Modal isOpen={isReplaceModalOpen} onClose={() => setIsReplaceModalOpen(false)} title="Thay Thế Hàng Loạt" size="md">
+        <div className="row g-3">
+          <div className="col-12 pb-2 border-bottom">
+            <h6 className="fw-black text-danger text-uppercase tracking-widest mb-1">CẢNH BÁO THAY THẾ</h6>
+            <p className="small text-muted mb-0">Hành động này sẽ thay đổi nguyên liệu trong <b>TẤT CẢ</b> các công thức đang sử dụng nguyên liệu cũ. Định lượng sẽ được giữ nguyên.</p>
+          </div>
+          
+          <div className="col-12">
+            <label className="form-label small fw-bold text-muted">Nguyên liệu đang chọn (Cũ)</label>
+            <input type="text" className="form-control fw-bold bg-light" value={selectedIngredient?.name || ''} disabled />
+          </div>
+
+          <div className="col-12 position-relative">
+            <label className="form-label small fw-bold text-primary">Nguyên liệu thay thế (Mới)</label>
+            <div className="input-group">
+              <span className="input-group-text bg-white"><Search size={14} /></span>
+              <input
+                type="text" 
+                placeholder="Tìm và chọn nguyên liệu mới..." 
+                value={replaceSearchTerm} 
+                onChange={e => {
+                  setReplaceSearchTerm(e.target.value);
+                  setIsReplaceDropdownOpen(true);
+                  setReplaceSelectedIndex(-1);
+                  if (replacementIngredient && e.target.value !== replacementIngredient.name) {
+                    setReplacementIngredient(null);
+                  }
+                }}
+                onFocus={() => setIsReplaceDropdownOpen(true)}
+                onKeyDown={e => {
+                  const filteredIngs = ingredients.filter(i => unsignedString(i.name).includes(unsignedString(replaceSearchTerm)));
+                  if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    setReplaceSelectedIndex(prev => (prev + 1) % filteredIngs.length);
+                  } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    setReplaceSelectedIndex(prev => (prev - 1 + filteredIngs.length) % filteredIngs.length);
+                  } else if (e.key === 'Enter' || e.key === 'Tab') {
+                    if (replaceSelectedIndex >= 0 && replaceSelectedIndex < filteredIngs.length) {
+                      e.preventDefault();
+                      const ing = filteredIngs[replaceSelectedIndex];
+                      setReplacementIngredient(ing);
+                      setReplaceSearchTerm(ing.name);
+                      setIsReplaceDropdownOpen(false);
+                    }
+                  }
+                }}
+                className="form-control fw-bold border-primary"
+              />
+            </div>
+            
+            {isReplaceDropdownOpen && replaceSearchTerm && !replacementIngredient && (
+              <div className="position-absolute w-100 mt-1 shadow-lg bg-white rounded-3 overflow-hidden border" style={{ zIndex: 1050 }}>
+                <div className="list-group list-group-flush" style={{ maxHeight: '200px', overflowY: 'auto' }}>
+                  {ingredients
+                    .filter(i => unsignedString(i.name).includes(unsignedString(replaceSearchTerm)))
+                    .map((i, idx) => (
+                      <button
+                        key={i.id}
+                        type="button"
+                        className={`list-group-item list-group-item-action border-0 py-2 px-3 small d-flex justify-content-between align-items-center ${replaceSelectedIndex === idx ? 'bg-light dropdown-active-item' : ''}`}
+                        onClick={() => {
+                          setReplacementIngredient(i);
+                          setReplaceSearchTerm(i.name);
+                          setIsReplaceDropdownOpen(false);
+                        }}
+                      >
+                        <div>
+                          <span className="fw-bold">{i.name}</span>
+                          <div className="text-muted" style={{ fontSize: '10px' }}>
+                            {categories.find(c => c.id === i.category_id)?.name || 'Không có danh mục'}
+                          </div>
+                        </div>
+                        <span className="badge rounded-pill bg-light text-secondary">{i.unit}</span>
+                      </button>
+                    ))}
+                </div>
+              </div>
+            )}
+            
+            {replacementIngredient && (
+              <div className="mt-2">
+                <span className="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-2" style={{ fontSize: '11px' }}>
+                  ✓ Đã chọn: {replacementIngredient.name} ({replacementIngredient.unit})
+                </span>
+              </div>
+            )}
+          </div>
+          
+          <div className="col-12 d-flex justify-content-end gap-2 mt-4 pt-4 border-top">
+            <button onClick={() => setIsReplaceModalOpen(false)} className="btn btn-light rounded-pill px-4 fw-bold">Hủy</button>
+            <button 
+              onClick={handleMassReplace} 
+              className="btn btn-primary rounded-pill px-4 fw-black shadow-sm"
+              disabled={!replacementIngredient}
+            >
+              Xác Nhận Thay Thế
             </button>
           </div>
         </div>
