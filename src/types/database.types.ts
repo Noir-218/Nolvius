@@ -683,6 +683,39 @@ export type Database = {
           },
         ]
       }
+      weekly_reports: {
+        Row: {
+          id: string
+          facility_id: string
+          start_date: string
+          end_date: string
+          source_data: Json
+          total_invoices: number
+          total_revenue: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          facility_id: string
+          start_date: string
+          end_date: string
+          source_data: Json
+          total_invoices: number
+          total_revenue: number
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          facility_id?: string
+          start_date?: string
+          end_date?: string
+          source_data?: Json
+          total_invoices?: number
+          total_revenue?: number
+          created_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       vw_current_stock: {

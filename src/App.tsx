@@ -12,6 +12,7 @@ import Transactions from './pages/Transactions';
 import Sales from './pages/Sales';
 import Audit from './pages/Audit';
 import Analysis from './pages/Analysis';
+import WeeklyReport from './pages/WeeklyReport';
 import Forecast from './pages/Forecast';
 import Expenses from './pages/Expenses';
 import Users from './pages/Users';
@@ -41,6 +42,7 @@ function App() {
               <Route path="sales" element={<Sales />} />
               <Route path="audit" element={<Audit />} />
               <Route path="analysis" element={<Analysis />} />
+              <Route path="weekly-report" element={<WeeklyReport />} />
               <Route path="forecast" element={<Forecast />} />
               <Route path="expenses" element={<Expenses />} />
               <Route path="users" element={<Users />} />

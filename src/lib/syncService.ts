@@ -105,6 +105,93 @@ export interface MissingColumn extends ColumnInfo {
   message?: string;
 }
 
+export interface MissingTable {
+  table_name: string;
+  columns: ColumnInfo[];
+  selected: boolean;
+}
+
+/**
+ * So sánh bảng (Tables) giữa nguồn và đích, trả về danh sách bảng còn thiếu ở đích
+ */
+export function diffTables(sourceSchema: ColumnInfo[], destSchema: ColumnInfo[]): MissingTable[] {
+  const destTables = new Set(destSchema.map(c => c.table_name));
+  const sourceTables = new Map<string, ColumnInfo[]>();
+
+  // Nhóm các cột của source theo tên bảng
+  for (const col of sourceSchema) {
+    if (!sourceTables.has(col.table_name)) {
+      sourceTables.set(col.table_name, []);
+    }
+    sourceTables.get(col.table_name)!.push(col);
+  }
+
+  // Lọc ra các bảng có ở nguồn nhưng không có ở đích
+  const missing: MissingTable[] = [];
+  for (const [tableName, cols] of sourceTables.entries()) {
+    if (!destTables.has(tableName)) {
+      missing.push({ table_name: tableName, columns: cols, selected: true });
+    }
+  }
+
+  return missing;
+}
+
+/**
+ * Sinh mã SQL CREATE TABLE từ danh sách bảng được chọn.
+ * Chú ý: Không sinh khoá ngoại (FK) để tránh lỗi thứ tự tạo bảng.
+ * Người dùng cần kiểm tra và bổ sung FK thủ công nếu cần.
+ */
+export function generateCreateTableSQL(tables: MissingTable[]): string {
+  const parts: string[] = [];
+
+  for (const table of tables) {
+    if (!table.selected) continue;
+
+    const columnDefs = table.columns.map(col => {
+      let def = `  ${col.column_name} ${col.data_type.toUpperCase()}`;
+
+      // Thêm default nếu có, bỏ qua nextval (sequence) vì không áp dụng được cross-db
+      if (col.column_default && !col.column_default.includes('nextval')) {
+        def += ` DEFAULT ${col.column_default}`;
+      }
+
+      if (col.is_nullable === 'NO') {
+        def += ' NOT NULL';
+      }
+
+      // Đặt PRIMARY KEY cho cột id
+      if (col.column_name === 'id') {
+        def += ' PRIMARY KEY';
+      }
+
+      return def;
+    });
+
+    const sql = [
+      `-- Bảng: ${table.table_name}`,
+      `CREATE TABLE IF NOT EXISTS public.${table.table_name} (`,
+      columnDefs.join(',\n'),
+      ');',
+      '',
+      `ALTER TABLE public.${table.table_name} ENABLE ROW LEVEL SECURITY;`,
+      '',
+    ].join('\n');
+
+    parts.push(sql);
+  }
+
+  return parts.length > 0
+    ? [
+        '-- ⚠️ LƯU Ý: Script này CHỈ tạo cấu trúc cột cơ bản.',
+        '-- Bạn cần tự bổ sung các FOREIGN KEY, CONSTRAINT, INDEX và RLS POLICY phù hợp sau khi chạy.',
+        '-- Tham chiếu file supabase_facility_migration.sql trong dự án để biết cấu trúc đầy đủ.',
+        '',
+        ...parts,
+      ].join('\n')
+    : '';
+}
+
 /**
  * Lấy toàn bộ thông tin schema (danh sách cột) của một cơ sở
  * Yêu cầu RPC function get_schema_info() đã được deploy trên Supabase project đó

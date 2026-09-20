@@ -7,8 +7,11 @@ import {
   SyncProgress,
   getSchemaInfo,
   diffSchemas,
+  diffTables,
   applyMissingColumns,
+  generateCreateTableSQL,
   MissingColumn,
+  MissingTable,
 } from '../lib/syncService';
 import {
   Database,
@@ -21,6 +24,11 @@ import {
   Search,
   ShieldCheck,
   Plus,
+  Table2,
+  Code2,
+  Copy,
+  CheckCheck,
+  X,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -44,6 +52,11 @@ const DataSync: React.FC = () => {
   const [checkingSchema, setCheckingSchema] = useState(false);
   const [applyingSchema, setApplyingSchema] = useState(false);
   const [missingColumns, setMissingColumns] = useState<MissingColumn[] | null>(null);
+  const [missingTables, setMissingTables] = useState<MissingTable[] | null>(null);
+
+  // ── SQL Modal state ──
+  const [generatedSQL, setGeneratedSQL] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     const fetchFacilities = async () => {
@@ -108,17 +121,26 @@ const DataSync: React.FC = () => {
 
     setCheckingSchema(true);
     setMissingColumns(null);
+    setMissingTables(null);
+    setGeneratedSQL(null);
     try {
       const [sourceSchema, destSchema] = await Promise.all([
         getSchemaInfo(sourceFac),
         getSchemaInfo(destFac),
       ]);
-      const diff = diffSchemas(sourceSchema, destSchema);
-      setMissingColumns(diff);
-      if (diff.length === 0) {
+      const missingCols = diffSchemas(sourceSchema, destSchema);
+      const missingTbls = diffTables(sourceSchema, destSchema);
+
+      setMissingColumns(missingCols);
+      setMissingTables(missingTbls);
+
+      if (missingCols.length === 0 && missingTbls.length === 0) {
         toast.success('Schema đang đồng bộ hoàn toàn!');
       } else {
-        toast(`Phát hiện ${diff.length} cột còn thiếu.`, { icon: '⚠️' });
+        const parts = [];
+        if (missingTbls.length > 0) parts.push(`${missingTbls.length} bảng thiếu`);
+        if (missingCols.length > 0) parts.push(`${missingCols.length} cột thiếu`);
+        toast(`Phát hiện ${parts.join(' và ')}.`, { icon: '⚠️' });
       }
     } catch (err: any) {
       toast.error(err.message || 'Không thể đọc schema!');
@@ -154,6 +176,31 @@ const DataSync: React.FC = () => {
     }
   };
 
+  const handleToggleMissingTable = (tableName: string) => {
+    setMissingTables(prev =>
+      prev ? prev.map(t => t.table_name === tableName ? { ...t, selected: !t.selected } : t) : prev
+    );
+  };
+
+  const handleSelectAllTables = (select: boolean) => {
+    setMissingTables(prev => prev ? prev.map(t => ({ ...t, selected: select })) : prev);
+  };
+
+  const handleGenerateSQL = () => {
+    if (!missingTables) return;
+    const sql = generateCreateTableSQL(missingTables.filter(t => t.selected));
+    if (!sql) { toast.error('Vui lòng chọn ít nhất một bảng!'); return; }
+    setGeneratedSQL(sql);
+    setCopied(false);
+  };
+
+  const handleCopySQL = async () => {
+    if (!generatedSQL) return;
+    await navigator.clipboard.writeText(generatedSQL);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2500);
+  };
+
   const getStatusIcon = (status: SyncProgress['status']) => {
     switch (status) {
       case 'pending': return <div className="w-5 h-5 rounded-full border-2 border-gray-300" />;
@@ -174,6 +221,7 @@ const DataSync: React.FC = () => {
   };
 
   const pendingMissing = missingColumns?.filter(c => c.status === 'pending') ?? [];
+  const selectedMissingTableCount = missingTables?.filter(t => t.selected).length ?? 0;
 
   return (
     <div className="space-y-6">
@@ -207,6 +255,60 @@ const DataSync: React.FC = () => {
           Đồng bộ Cấu trúc
         </button>
       </div>
+
+      {/* SQL Modal */}
+      {generatedSQL !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-5 border-b border-gray-100">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-teal-50 flex items-center justify-center">
+                  <Code2 size={18} className="text-teal-600" />
+                </div>
+                <div>
+                  <h3 className="font-black text-gray-900 text-base">Mã SQL tạo bảng</h3>
+                  <p className="text-xs text-gray-500">Copy và chạy trên SQL Editor của Supabase đích</p>
+                </div>
+              </div>
+              <button onClick={() => setGeneratedSQL(null)} className="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors">
+                <X size={18} className="text-gray-500" />
+              </button>
+            </div>
+
+            {/* Warning */}
+            <div className="px-5 pt-4">
+              <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800">
+                <AlertCircle size={15} className="shrink-0 mt-0.5" />
+                <span><strong>Lưu ý:</strong> SQL này chỉ tạo cấu trúc cột cơ bản. Bạn cần tự bổ sung <strong>FOREIGN KEY</strong>, <strong>INDEX</strong> và <strong>RLS POLICY</strong> phù hợp. Tham chiếu file <code className="bg-amber-100 px-1 rounded">supabase_facility_migration.sql</code> trong dự án.</span>
+              </div>
+            </div>
+
+            {/* SQL Code Block */}
+            <div className="flex-1 overflow-auto px-5 py-4">
+              <pre className="text-xs font-mono bg-gray-950 text-green-300 p-4 rounded-xl overflow-auto leading-relaxed whitespace-pre-wrap">
+                {generatedSQL}
+              </pre>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex justify-end gap-3 p-5 border-t border-gray-100">
+              <button onClick={() => setGeneratedSQL(null)} className="px-5 py-2 rounded-lg text-sm font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 transition-colors">
+                Đóng
+              </button>
+              <button
+                onClick={handleCopySQL}
+                className={`px-5 py-2 rounded-lg text-sm font-bold text-white flex items-center gap-2 transition-all ${
+                  copied ? 'bg-green-600' : 'bg-teal-600 hover:bg-teal-700'
+                }`}
+              >
+                {copied ? <CheckCheck size={16} /> : <Copy size={16} />}
+                {copied ? 'Đã sao chép!' : 'Sao chép SQL'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── DATA SYNC TAB ── */}
       {activeTab === 'data' && (
@@ -342,7 +444,7 @@ const DataSync: React.FC = () => {
                 <label className="block text-sm font-bold text-gray-700 mb-2 uppercase tracking-wide">Cơ sở Nguồn (Schema chuẩn)</label>
                 <select
                   value={schemaSourceId}
-                  onChange={(e) => { setSchemaSourceId(e.target.value); setMissingColumns(null); }}
+                  onChange={(e) => { setSchemaSourceId(e.target.value); setMissingColumns(null); setMissingTables(null); setGeneratedSQL(null); }}
                   disabled={checkingSchema || applyingSchema || loadingFacilities}
                   className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-teal-500 focus:ring-teal-500 py-3"
                 >
@@ -361,7 +463,7 @@ const DataSync: React.FC = () => {
                 <label className="block text-sm font-bold text-gray-700 mb-2 uppercase tracking-wide">Cơ sở Đích (Cần cập nhật)</label>
                 <select
                   value={schemaDestId}
-                  onChange={(e) => { setSchemaDestId(e.target.value); setMissingColumns(null); }}
+                  onChange={(e) => { setSchemaDestId(e.target.value); setMissingColumns(null); setMissingTables(null); setGeneratedSQL(null); }}
                   disabled={checkingSchema || applyingSchema || loadingFacilities}
                   className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-teal-500 focus:ring-teal-500 py-3"
                 >
@@ -399,73 +501,166 @@ const DataSync: React.FC = () => {
                   )}
                 </button>
               )}
+
+              {missingTables && missingTables.length > 0 && selectedMissingTableCount > 0 && (
+                <button
+                  onClick={handleGenerateSQL}
+                  disabled={checkingSchema || applyingSchema}
+                  className="px-6 py-2.5 bg-violet-600 text-white rounded-lg font-bold text-sm hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+                >
+                  <Code2 size={16} />
+                  Tạo SQL cho {selectedMissingTableCount} bảng đã chọn
+                </button>
+              )}
             </div>
           </div>
 
           {/* Schema Diff Result */}
-          {missingColumns !== null && (
-            <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-black text-gray-900 uppercase">Kết quả kiểm tra</h2>
-                {missingColumns.length === 0 ? (
-                  <span className="flex items-center gap-2 text-green-600 font-bold text-sm bg-green-50 px-3 py-1.5 rounded-full border border-green-200">
-                    <CheckCircle size={16} /> Schema đồng bộ hoàn toàn
-                  </span>
-                ) : (
-                  <span className="flex items-center gap-2 text-amber-700 font-bold text-sm bg-amber-50 px-3 py-1.5 rounded-full border border-amber-200">
-                    <AlertCircle size={16} /> {missingColumns.length} cột thiếu
-                  </span>
-                )}
-              </div>
+          {(missingColumns !== null || missingTables !== null) && (
+            <div className="space-y-6">
 
-              {missingColumns.length === 0 ? (
-                <p className="text-gray-500 text-sm text-center py-8">
-                  Cơ sở đích đã có đầy đủ cột so với cơ sở nguồn. Không cần đồng bộ.
-                </p>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-gray-200">
-                        <th className="text-left py-2 px-3 text-xs font-black text-gray-500 uppercase tracking-wide">Trạng thái</th>
-                        <th className="text-left py-2 px-3 text-xs font-black text-gray-500 uppercase tracking-wide">Bảng</th>
-                        <th className="text-left py-2 px-3 text-xs font-black text-gray-500 uppercase tracking-wide">Cột thiếu</th>
-                        <th className="text-left py-2 px-3 text-xs font-black text-gray-500 uppercase tracking-wide">Kiểu dữ liệu</th>
-                        <th className="text-left py-2 px-3 text-xs font-black text-gray-500 uppercase tracking-wide">Default</th>
-                        <th className="text-left py-2 px-3 text-xs font-black text-gray-500 uppercase tracking-wide">Kết quả</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {missingColumns.map((col) => (
-                        <tr key={`${col.table_name}::${col.column_name}`} className={`
-                          ${col.status === 'added' ? 'bg-green-50' : ''}
-                          ${col.status === 'error' ? 'bg-red-50' : ''}
-                          ${col.status === 'applying' ? 'bg-blue-50' : ''}
-                        `}>
-                          <td className="py-2.5 px-3">
-                            <div className="flex items-center justify-center w-6">
-                              {getColStatusIcon(col.status)}
-                            </div>
-                          </td>
-                          <td className="py-2.5 px-3 font-mono text-xs text-gray-700 font-bold">{col.table_name}</td>
-                          <td className="py-2.5 px-3 font-mono text-xs text-teal-700 font-bold">{col.column_name}</td>
-                          <td className="py-2.5 px-3 font-mono text-xs text-gray-500">{col.data_type}</td>
-                          <td className="py-2.5 px-3 font-mono text-xs text-gray-400">{col.column_default ?? '—'}</td>
-                          <td className="py-2.5 px-3 text-xs">
-                            {col.status === 'added' && <span className="text-green-600 font-bold">✓ Đã thêm</span>}
-                            {col.status === 'exists' && <span className="text-gray-400">Đã tồn tại</span>}
-                            {col.status === 'error' && <span className="text-red-500">{col.message}</span>}
-                            {col.status === 'applying' && <span className="text-blue-500">Đang thêm...</span>}
-                            {col.status === 'pending' && <span className="text-gray-400">Chờ đồng bộ</span>}
-                          </td>
-                        </tr>
+              {/* Missing Tables Section */}
+              {missingTables !== null && (
+                <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-lg font-black text-gray-900 uppercase flex items-center gap-2">
+                      <Table2 size={20} className="text-violet-500" />
+                      Bảng còn thiếu
+                    </h2>
+                    {missingTables.length === 0 ? (
+                      <span className="flex items-center gap-2 text-green-600 font-bold text-sm bg-green-50 px-3 py-1.5 rounded-full border border-green-200">
+                        <CheckCircle size={16} /> Đầy đủ bảng
+                      </span>
+                    ) : (
+                      <div className="flex items-center gap-3">
+                        <span className="flex items-center gap-2 text-violet-700 font-bold text-sm bg-violet-50 px-3 py-1.5 rounded-full border border-violet-200">
+                          <AlertCircle size={16} /> {missingTables.length} bảng thiếu
+                        </span>
+                        <button onClick={() => handleSelectAllTables(true)} className="text-xs text-teal-600 font-bold hover:underline">Chọn tất cả</button>
+                        <span className="text-gray-300">|</span>
+                        <button onClick={() => handleSelectAllTables(false)} className="text-xs text-gray-500 font-bold hover:underline">Bỏ chọn</button>
+                      </div>
+                    )}
+                  </div>
+
+                  {missingTables.length === 0 ? (
+                    <p className="text-gray-500 text-sm text-center py-6">Cơ sở đích đã có đầy đủ bảng. Không cần tạo thêm.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {missingTables.map((table) => (
+                        <label
+                          key={table.table_name}
+                          className={`flex items-center gap-4 p-4 rounded-xl border cursor-pointer transition-all ${
+                            table.selected
+                              ? 'bg-violet-50 border-violet-300'
+                              : 'bg-white border-gray-200 hover:bg-gray-50'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={table.selected}
+                            onChange={() => handleToggleMissingTable(table.table_name)}
+                            className="w-4 h-4 text-violet-600 rounded border-gray-300 focus:ring-violet-500"
+                          />
+                          <Table2 size={18} className={table.selected ? 'text-violet-500' : 'text-gray-400'} />
+                          <div className="flex-1">
+                            <div className="font-mono font-bold text-sm text-gray-800">{table.table_name}</div>
+                            <div className="text-xs text-gray-400 mt-0.5">{table.columns.length} cột</div>
+                          </div>
+                          <div className="flex flex-wrap gap-1 justify-end max-w-xs">
+                            {table.columns.slice(0, 5).map(col => (
+                              <span key={col.column_name} className="text-[10px] font-mono bg-gray-100 text-gray-600 px-2 py-0.5 rounded">{col.column_name}</span>
+                            ))}
+                            {table.columns.length > 5 && (
+                              <span className="text-[10px] text-gray-400">+{table.columns.length - 5} cột</span>
+                            )}
+                          </div>
+                        </label>
                       ))}
-                    </tbody>
-                  </table>
+
+                      <div className="mt-4 flex justify-end">
+                        <button
+                          onClick={handleGenerateSQL}
+                          disabled={selectedMissingTableCount === 0}
+                          className="px-6 py-2.5 bg-violet-600 text-white rounded-lg font-bold text-sm hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+                        >
+                          <Code2 size={16} />
+                          Tạo mã SQL cho {selectedMissingTableCount} bảng đã chọn
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
+
+              {/* Missing Columns Section */}
+              {missingColumns !== null && (
+                <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-lg font-black text-gray-900 uppercase">Cột còn thiếu</h2>
+                    {missingColumns.length === 0 ? (
+                      <span className="flex items-center gap-2 text-green-600 font-bold text-sm bg-green-50 px-3 py-1.5 rounded-full border border-green-200">
+                        <CheckCircle size={16} /> Đầy đủ cột
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-2 text-amber-700 font-bold text-sm bg-amber-50 px-3 py-1.5 rounded-full border border-amber-200">
+                        <AlertCircle size={16} /> {missingColumns.length} cột thiếu
+                      </span>
+                    )}
+                  </div>
+
+                  {missingColumns.length === 0 ? (
+                    <p className="text-gray-500 text-sm text-center py-8">
+                      Cơ sở đích đã có đầy đủ cột so với cơ sở nguồn. Không cần đồng bộ.
+                    </p>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-gray-200">
+                            <th className="text-left py-2 px-3 text-xs font-black text-gray-500 uppercase tracking-wide">Trạng thái</th>
+                            <th className="text-left py-2 px-3 text-xs font-black text-gray-500 uppercase tracking-wide">Bảng</th>
+                            <th className="text-left py-2 px-3 text-xs font-black text-gray-500 uppercase tracking-wide">Cột thiếu</th>
+                            <th className="text-left py-2 px-3 text-xs font-black text-gray-500 uppercase tracking-wide">Kiểu dữ liệu</th>
+                            <th className="text-left py-2 px-3 text-xs font-black text-gray-500 uppercase tracking-wide">Default</th>
+                            <th className="text-left py-2 px-3 text-xs font-black text-gray-500 uppercase tracking-wide">Kết quả</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {missingColumns.map((col) => (
+                            <tr key={`${col.table_name}::${col.column_name}`} className={`
+                              ${col.status === 'added' ? 'bg-green-50' : ''}
+                              ${col.status === 'error' ? 'bg-red-50' : ''}
+                              ${col.status === 'applying' ? 'bg-blue-50' : ''}
+                            `}>
+                              <td className="py-2.5 px-3">
+                                <div className="flex items-center justify-center w-6">
+                                  {getColStatusIcon(col.status)}
+                                </div>
+                              </td>
+                              <td className="py-2.5 px-3 font-mono text-xs text-gray-700 font-bold">{col.table_name}</td>
+                              <td className="py-2.5 px-3 font-mono text-xs text-teal-700 font-bold">{col.column_name}</td>
+                              <td className="py-2.5 px-3 font-mono text-xs text-gray-500">{col.data_type}</td>
+                              <td className="py-2.5 px-3 font-mono text-xs text-gray-400">{col.column_default ?? '—'}</td>
+                              <td className="py-2.5 px-3 text-xs">
+                                {col.status === 'added' && <span className="text-green-600 font-bold">✓ Đã thêm</span>}
+                                {col.status === 'exists' && <span className="text-gray-400">Đã tồn tại</span>}
+                                {col.status === 'error' && <span className="text-red-500">{col.message}</span>}
+                                {col.status === 'applying' && <span className="text-blue-500">Đang thêm...</span>}
+                                {col.status === 'pending' && <span className="text-gray-400">Chờ đồng bộ</span>}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
+
             </div>
           )}
+
         </>
       )}
     </div>
